@@ -388,6 +388,7 @@ def main():
 
     bbb = BuildbotBridge(config)
 
+    log.info("Running %s", args.action)
     action = getattr(bbb, 'start_{}'.format(args.action))
     action()
 
