@@ -124,6 +124,7 @@ class BuildbotBridge(object):
         'taskcluster_pulse_topic': '*.*.*.*.*.*.test-buildbot.#',
         'buildbot_pulse_exchange': 'exchange/build',
         'buildbot_pulse_topic': '#',
+        "pulse_host": "pulse.mozilla.org",
     }
 
     def __init__(self, config):
@@ -191,6 +192,7 @@ class BuildbotBridge(object):
         pulse_config = PulseConfiguration(
             user=self.config['pulse_user'],
             password=self.config['pulse_password'],
+            host=self.config["pulse_host"],
         )
         pulse_exchange = self.config['taskcluster_pulse_exchange']
         pulse_topic = self.config['taskcluster_pulse_topic']
