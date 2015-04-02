@@ -193,6 +193,8 @@ class BuildbotBridge(object):
             user=self.config['pulse_user'],
             password=self.config['pulse_password'],
             host=self.config["pulse_host"],
+            # TODO: remove me
+            ssl=False
         )
         pulse_exchange = self.config['taskcluster_pulse_exchange']
         pulse_topic = self.config['taskcluster_pulse_topic']
@@ -206,6 +208,9 @@ class BuildbotBridge(object):
         pulse_config = PulseConfiguration(
             user=self.config['pulse_user'],
             password=self.config['pulse_password'],
+            host=self.config["pulse_host"],
+            # TODO: remove me
+            ssl=False
         )
         pulse_exchange = self.config['buildbot_pulse_exchange']
         pulse_topic = self.config['buildbot_pulse_topic']
@@ -223,8 +228,8 @@ class BuildbotBridge(object):
             task = self.getTask(taskId)
             log.info("claiming %s", taskId)
             claim = self.taskcluster_queue.claimTask(taskId, runId, {
-                'workerGroup': 'test-buildbot-bridge',
-                'workerId': 'test-buildbot-id',
+                "workerGroup": self.config["taskcluster_worker_group"],
+                "workerId": self.config["taskcluster_worker_id"],
             })
             log.debug("claim: %s", claim)
 

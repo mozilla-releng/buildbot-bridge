@@ -3,6 +3,8 @@
         "clientId": "foo",
         "accessToken": "foo"
     },
+    "taskcluster_worker_group": "buildbot-bridge",
+    "taskcluster_worker_id": "buildbot-bridge",
     "buildbot_scheduler_db": "mysql://foo:bar@blah/crap",
     "bbb_db": "sqlite:///bbb.db",
 
