@@ -13,5 +13,6 @@ setup(
         "requests",
         "mozillapulse",
         "redo",
+        "mysql-python",
     ],
 )
