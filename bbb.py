@@ -222,7 +222,7 @@ class BuildbotBridge(object):
             log.info("claiming %s", taskId)
             claim = self.taskcluster_queue.claimTask(taskId, runId, {
                 'workerGroup': 'test-buildbot-bridge',
-                'workerId': 'test-buildot-id',
+                'workerId': 'test-buildbot-id',
             })
             log.debug("claim: %s", claim)
 
