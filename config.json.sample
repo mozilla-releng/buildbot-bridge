@@ -1,0 +1,19 @@
+{
+    "taskcluster_credentials": {
+        "clientId": "foo",
+        "accessToken": "foo"
+    },
+    # URI to the Buildbot scheduler database
+    "buildbot_scheduler_db": "mysql://foo:bar@blah/crap",
+    # URI to our database
+    "bbb_db": "sqlite:///bbb.db",
+
+    "pulse_user": "foo",
+    "pulse_password": "foo"
+
+    # Override if you want something different than the default
+    #"taskcluster_pulse_exchange": "",
+    #"taskcluster_pulse_topic": "",
+    #"buildbot_pulse_exchange": "",
+    #"buildbot_pulse_topic": "",
+}
