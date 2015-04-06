@@ -7,6 +7,8 @@ setup(
     author="Mozilla Release Engineering",
     py_modules=["bbb"],
     install_requires=[
+        # Because taskcluster hard pins this version...
+        "requests==2.4.3",
         "arrow",
         "taskcluster",
         "sqlalchemy",
