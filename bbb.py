@@ -224,6 +224,18 @@ class BuildbotBridge(object):
         log.debug("got %s %s", data, msg)
         taskId = data['status']['taskId']
         runId = data['status']['runs'][-1]['runId']
+
+        # No matter what happens we want the message to be acked. If we were
+        # unable to claim the task it's likely that the message was incorrect
+        # in some way. If we were unable to inject the task into Buildbot,
+        # we'll let TC handle that retry. None of these cases warrant leaving
+        # the message in the queue for other consumers.
+        msg.ack()
+
+        # The taskcluster library handles retries for any methods that touch
+        # the network, so there's no need for us to do any of that here. If
+        # any of its methods end up raising an error, retrying is very unlikely
+        # to yield a different result.
         try:
             task = self.getTask(taskId)
             log.info("claiming %s", taskId)
@@ -232,7 +244,15 @@ class BuildbotBridge(object):
                 "workerId": self.config["taskcluster_worker_id"],
             })
             log.debug("claim: %s", claim)
+        except:
+            log.exception("problem claiming task; can't proceed")
+            self.taskcluster_queue.reportException(taskId, runId, {"reason": "malformed-payload"})
+            raise
 
+        # However, if we hit issues when injecting the task into the Buildbot
+        # database retrying may help. This is done by reporting a special
+        # exception to TC and letting it requeue the task.
+        try:
             buildrequestId = inject_task(self.buildbot_db, taskId, task, task['payload'])
             self.tasks_table.insert().values(
                 taskId=taskId,
@@ -244,14 +264,8 @@ class BuildbotBridge(object):
             ).execute()
         except:
             log.exception("problem handling task; re-queuing")
-            # TODO: do we really want to use worker-shutdown here? that will
-            # cause TC to retry. do we want that, or should we be the ones
-            # retrying? buildbot won't retry here because the BR _may_ not exist
-            # we should probably do finer grained error handling here. ie,
-            # something specific to each thing in the try block that can fail
             self.taskcluster_queue.reportException(taskId, runId, {"reason": "worker-shutdown"})
             raise
-        msg.ack()
 
     def receivedBBMessage(self, data, msg):
         log.debug("got %s %s", data, msg)

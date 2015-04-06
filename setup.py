@@ -15,5 +15,7 @@ setup(
         "mozillapulse",
         "redo",
         "mysql-python",
+        "nose",
+        "mock"
     ],
 )
