@@ -5,7 +5,7 @@ setup(
     version="0.1",
     description="Buildbot <-> Taskcluster Bridge",
     author="Mozilla Release Engineering",
-    packages=["bbb"],
+    py_modules=["bbb"],
     install_requires=[
         "arrow",
         "taskcluster",
