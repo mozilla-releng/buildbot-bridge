@@ -12,7 +12,6 @@ setup(
         "arrow",
         "taskcluster",
         "sqlalchemy",
-        "requests",
         "mozillapulse",
         "redo",
         "mysql-python",
