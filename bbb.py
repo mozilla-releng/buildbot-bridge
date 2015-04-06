@@ -244,6 +244,11 @@ class BuildbotBridge(object):
             ).execute()
         except:
             log.exception("problem handling task; re-queuing")
+            # TODO: do we really want to use worker-shutdown here? that will
+            # cause TC to retry. do we want that, or should we be the ones
+            # retrying? buildbot won't retry here because the BR _may_ not exist
+            # we should probably do finer grained error handling here. ie,
+            # something specific to each thing in the try block that can fail
             self.taskcluster_queue.reportException(taskId, runId, {"reason": "worker-shutdown"})
             raise
         msg.ack()
