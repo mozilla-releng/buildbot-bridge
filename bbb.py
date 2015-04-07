@@ -246,26 +246,40 @@ class BuildbotBridge(object):
             log.debug("claim: %s", claim)
         except:
             log.exception("problem claiming task; can't proceed")
+            # XXX: Reporting an exception if we were unable to claim may lead
+            # to inconsistent state between buildbot and TC. No matter what
+            # happens with the claim, Buildbot will retry the build, so if
+            # we report an exception here in that case, TC will think the
+            # build has had an exception even though it hasn't. However,
+            # the reaper _should_ fix the status after the build has completed.
             self.taskcluster_queue.reportException(taskId, runId, {"reason": "malformed-payload"})
             raise
 
-        # However, if we hit issues when injecting the task into the Buildbot
-        # database retrying may help. This is done by reporting a special
-        # exception to TC and letting it requeue the task.
-        try:
-            buildrequestId = inject_task(self.buildbot_db, taskId, task, task['payload'])
-            self.tasks_table.insert().values(
-                taskId=taskId,
-                runId=runId,
-                buildrequestId=buildrequestId,
-                createdDate=parseDateString(task['created']),
-                processedDate=arrow.now().timestamp,
-                takenUntil=parseDateString(claim['takenUntil'])
-            ).execute()
-        except:
-            log.exception("problem handling task; re-queuing")
-            self.taskcluster_queue.reportException(taskId, runId, {"reason": "worker-shutdown"})
-            raise
+
+        # If the task already exists in the bridge database we just need to
+        # update its runId. If we created a new BuildRequest for it we'll end
+        # up rerunning it twice.
+        row = self.tasks_table.select(self.tasks_table.c.taskId == taskId).execute().fetchone()
+        if row:
+            self.updateRunId(row.buildrequestId, runId)
+        else:
+            # However, if we hit issues when injecting the task into the Buildbot
+            # database retrying may help. This is done by reporting a special
+            # exception to TC and letting it requeue the task.
+            try:
+                buildrequestId = inject_task(self.buildbot_db, taskId, task, task['payload'])
+                self.tasks_table.insert().values(
+                    taskId=taskId,
+                    runId=runId,
+                    buildrequestId=buildrequestId,
+                    createdDate=parseDateString(task['created']),
+                    processedDate=arrow.now().timestamp,
+                    takenUntil=parseDateString(claim['takenUntil'])
+                ).execute()
+            except:
+                log.exception("problem handling task; re-queuing")
+                self.taskcluster_queue.reportException(taskId, runId, {"reason": "worker-shutdown"})
+                raise
 
     def receivedBBMessage(self, data, msg):
         log.debug("got %s %s", data, msg)
@@ -332,9 +346,7 @@ class BuildbotBridge(object):
             elif results == 5:
                 log.info("marking task %s as malformed payload exception and rerunning", taskId)
                 self.taskcluster_queue.reportException(taskId, runId, {"reason": "malformed-payload"})
-                status = self.taskcluster_queue.rerunTask(taskId)["status"]
-                self.updateRunId(brid, len(status['runs']) - 1)
-                # Update DB with runId?
+                self.taskcluster_queue.rerunTask(taskId)
             # CANCELLED
             elif results == 6:
                 log.info("marking task %s as cancelled", taskId)
