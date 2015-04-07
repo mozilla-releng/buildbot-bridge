@@ -84,3 +84,11 @@ class TestInjector(unittest.TestCase):
         self.assertRaises(Exception, bbb.receivedTCMessage, data, msg)
 
         self.assertEquals(msg.ack.call_count, 1)
+
+
+class TestReclaimer(unittest.TestCase):
+    # simple tests should be fine here
+
+
+class TestReaper(unittest.TestCase):
+    # This is where we need to test all of the buildbot -> TC status translations
