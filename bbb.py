@@ -427,7 +427,13 @@ def main():
 
     log.info("Running %s", args.action)
     action = getattr(bbb, 'start_{}'.format(args.action))
-    action()
+    while True:
+        try:
+            action()
+        except KeyboardInterrupt:
+            raise
+        except:
+            log.exception("Caught exception:")
 
 if __name__ == '__main__':
     main()
