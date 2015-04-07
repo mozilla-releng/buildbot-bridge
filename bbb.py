@@ -313,7 +313,6 @@ class BuildbotBridge(object):
                 taskId, runId = self.getTaskId(brid)
             except ValueError:
                 log.error("Couldn't find task for %i", brid)
-                msg.ack()
                 continue
 
             log.info("brid %i : taskId %s : runId %i", brid, taskId, runId)
