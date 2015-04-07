@@ -308,26 +308,37 @@ class BuildbotBridge(object):
             expires = arrow.now().replace(weeks=1).isoformat()
             self.createJsonArtifact(taskId, runId, "properties.json", properties, expires)
 
-            # If this isn't a retry, mark the task as done
-            # buildbot status 5 == RETRY
-            if results != 5:
-                if results == 0:
-                    log.info("marking task %s as completed", taskId)
-                    self.taskcluster_queue.reportCompleted(taskId, runId, {'success': True})
-                else:
-                    log.info("marking task %s as failed", taskId)
-                    self.taskcluster_queue.reportFailed(taskId, runId)
-
+            # SUCCESS
+            if results == 0:
+                log.info("marking task %s as completed", taskId)
+                self.taskcluster_queue.reportCompleted(taskId, runId, {'success': True})
                 self.deleteBuildrequest(brid)
-
-            # If this is a retry, mark it as failed, and call retryTask
-            else:
+            # WARNINGS or FAILURE
+            # Eventually we probably need to set something different here.
+            elif results in (1, 2):
                 log.info("marking task %s as failed", taskId)
                 self.taskcluster_queue.reportFailed(taskId, runId)
-                log.info("re-running task %s", taskId)
+                self.deleteBuildrequest(brid)
+            # SKIPPED - not a valid Build status
+            elif results == 3:
+                pass
+            # EXCEPTION
+            elif results == 4:
+                log.info("marking task %s as malformed payload exception", taskId)
+                self.taskcluster_queue.reportException(taskId, runId, {"reason": "malformed-payload"})
+                self.deleteBuildrequest(brid)
+            # RETRY
+            elif results == 5:
+                log.info("marking task %s as malformed payload exception and rerunning", taskId)
+                self.taskcluster_queue.reportException(taskId, runId, {"reason": "worker-shutdown"})
                 status = self.taskcluster_queue.rerunTask(taskId)
-                # Update DB with runId?
                 self.updateRunId(brid, len(status['runs']) - 1)
+                # Update DB with runId?
+            # CANCELLED
+            elif results == 6:
+                log.info("marking task %s as cancelled", taskId)
+                self.taskcluster_queue.cancelTask(taskId)
+                self.deleteBuildrequest(brid)
 
         msg.ack()
 
