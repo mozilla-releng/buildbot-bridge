@@ -330,8 +330,9 @@ class BuildbotBridge(object):
             # RETRY
             elif results == 5:
                 log.info("marking task %s as malformed payload exception and rerunning", taskId)
-                self.taskcluster_queue.reportException(taskId, runId, {"reason": "worker-shutdown"})
+                self.taskcluster_queue.reportException(taskId, runId, {"reason": "malformed-payload"})
                 status = self.taskcluster_queue.rerunTask(taskId)
+                print status
                 self.updateRunId(brid, len(status['runs']) - 1)
                 # Update DB with runId?
             # CANCELLED
