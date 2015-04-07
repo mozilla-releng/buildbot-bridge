@@ -265,6 +265,7 @@ class BuildbotBridge(object):
         except:
             log.exception("problem handling task; re-queuing")
             self.taskcluster_queue.reportException(taskId, runId, {"reason": "worker-shutdown"})
+            raise
 
     def receivedBBMessage(self, data, msg):
         log.debug("got %s %s", data, msg)
