@@ -375,8 +375,10 @@ class BuildbotBridge(object):
                                          buildrequestId=t.buildrequestId).fetchall()
             log.debug("Task info: %s", t)
             log.debug("Buildrequest: %s", buildrequest)
-            if buildrequest.complete:
-                # The reaper should be handling deleting tasks
+            if not buildrequest:
+                # TODO: delete the task
+                pass
+            elif buildrequest.complete:
                 # TODO: have a max time here?
                 log.info("buildrequest %i is done", t.buildrequestId)
                 continue
