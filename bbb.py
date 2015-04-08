@@ -213,14 +213,11 @@ class BuildbotBridge(object):
             ssl=False
         )
         pulse_exchange = self.config['buildbot_pulse_exchange']
-        build_started_topic = self.config['build_started_pulse_topic']
-        build_finished_topic = self.config['build_finished_pulse_topic']
+        pulse_topic = self.config['buildbot_pulse_topic']
 
         self.pulse_consumer = GenericConsumer(pulse_config, exchange=pulse_exchange)
-        self.pulse_consumer.configure(topic=build_started_topic, callback=self.buildStarted)
-        self.pulse_consumer.configure(topic=build_finished_topic, callback=self.receivedBBMessage)
-        log.info("listening for pulse messages on %s/%s...", pulse_exchange, build_started_topic)
-        log.info("listening for pulse messages on %s/%s...", pulse_exchange, build_finished_topic)
+        self.pulse_consumer.configure(topic=pulse_topic, callback=self.receivedBBMessage)
+        log.info("listening for pulse messages on %s/%s...", pulse_exchange, pulse_topic)
         self.pulse_consumer.listen()
 
     def receivedTCMessage(self, data, msg):
@@ -267,105 +264,107 @@ class BuildbotBridge(object):
                 self.taskcluster_queue.reportException(taskId, runId, {"reason": "worker-shutdown"})
                 raise
 
-    def buildStarted(self, data, msg):
-        try:
-            msg.ack()
-            buildnumber = data["payload"]["build"]["number"]
-            brid = self.buildbot_db.execute(
-                sa.text("select buildrequests.id from buildrequests join builds ON buildrequests.id=builds.brid where builds.number=:buildnumber"),
-                buildnumber=buildnumber
-            ).fetchone()
-            taskId, runId = self.getTaskId(brid)
-            log.info("claiming %s", taskId)
-            claim = self.taskcluster_queue.claimTask(taskId, runId, {
-                "workerGroup": self.config["taskcluster_worker_group"],
-                "workerId": self.config["taskcluster_worker_id"],
-            })
-            log.debug("claim: %s", claim)
-            self.tasks_table.update(self.tasks_table.c.buildrequestId==brid).values(
-                takenUntil=claim["takenUntil"]
-            ).execute()
-        except:
-            log.exception("problem claiming task; can't proceed")
-            # XXX: Reporting an exception if we were unable to claim may lead
-            # to inconsistent state between buildbot and TC. No matter what
-            # happens with the claim, Buildbot will retry the build, so if
-            # we report an exception here in that case, TC will think the
-            # build has had an exception even though it hasn't. However,
-            # the reaper _should_ fix the status after the build has completed.
-            self.taskcluster_queue.reportException(taskId, runId, {"reason": "malformed-payload"})
-            raise
-
     def receivedBBMessage(self, data, msg):
         log.debug("got %s %s", data, msg)
-        # Get the request_ids from the properties
-        try:
-            properties = dict((key, (value, source)) for (key, value, source) in data['payload']['build']['properties'])
-        except KeyError:
-            log.error("couldn't get job properties")
-            msg.ack()
-            return
-
-        request_ids = properties.get('request_ids')
-        if not request_ids:
-            log.error("couldn't get request ids from %s", data)
-            msg.ack()
-            return
-
-        # Sanity check
-        assert request_ids[1] == 'postrun.py'
-
-        try:
-            results = data['payload']['build']['results']
-        except KeyError:
-            log.error("coudn't find job results")
-            msg.ack()
-            return
-
-        # For each request, get the taskId and runId
-        for brid in request_ids[0]:
+        event = data["_meta"]["routing_key"].split(".")[-1]
+        if event == "started":
             try:
+                msg.ack()
+                buildnumber = data["payload"]["build"]["number"]
+                brid = self.buildbot_db.execute(
+                    sa.text("select buildrequests.id from buildrequests join builds ON buildrequests.id=builds.brid where builds.number=:buildnumber"),
+                    buildnumber=buildnumber
+                ).fetchone()
                 taskId, runId = self.getTaskId(brid)
-            except ValueError:
-                log.error("Couldn't find task for %i", brid)
-                continue
-
-            log.info("brid %i : taskId %s : runId %i", brid, taskId, runId)
-
-            # Attach properties as artifacts
-            log.info("attaching properties to task %s", taskId)
-            expires = arrow.now().replace(weeks=1).isoformat()
-            self.createJsonArtifact(taskId, runId, "properties.json", properties, expires)
-
-            # SUCCESS
-            if results == 0:
-                log.info("marking task %s as completed", taskId)
-                self.taskcluster_queue.reportCompleted(taskId, runId, {'success': True})
-                self.deleteBuildrequest(brid)
-            # WARNINGS or FAILURE
-            # Eventually we probably need to set something different here.
-            elif results in (1, 2):
-                log.info("marking task %s as failed", taskId)
-                self.taskcluster_queue.reportFailed(taskId, runId)
-                self.deleteBuildrequest(brid)
-            # SKIPPED - not a valid Build status
-            elif results == 3:
-                pass
-            # EXCEPTION
-            elif results == 4:
-                log.info("marking task %s as malformed payload exception", taskId)
+                log.info("claiming %s", taskId)
+                claim = self.taskcluster_queue.claimTask(taskId, runId, {
+                    "workerGroup": self.config["taskcluster_worker_group"],
+                    "workerId": self.config["taskcluster_worker_id"],
+                })
+                log.debug("claim: %s", claim)
+                self.tasks_table.update(self.tasks_table.c.buildrequestId==brid).values(
+                    takenUntil=claim["takenUntil"]
+                ).execute()
+            except:
+                log.exception("problem claiming task; can't proceed")
+                # XXX: Reporting an exception if we were unable to claim may lead
+                # to inconsistent state between buildbot and TC. No matter what
+                # happens with the claim, Buildbot will retry the build, so if
+                # we report an exception here in that case, TC will think the
+                # build has had an exception even though it hasn't. However,
+                # the reaper _should_ fix the status after the build has completed.
                 self.taskcluster_queue.reportException(taskId, runId, {"reason": "malformed-payload"})
-                self.deleteBuildrequest(brid)
-            # RETRY
-            elif results == 5:
-                log.info("marking task %s as malformed payload exception and rerunning", taskId)
-                self.taskcluster_queue.reportException(taskId, runId, {"reason": "malformed-payload"})
-                self.taskcluster_queue.rerunTask(taskId)
-            # CANCELLED
-            elif results == 6:
-                log.info("marking task %s as cancelled", taskId)
-                self.taskcluster_queue.cancelTask(taskId)
-                self.deleteBuildrequest(brid)
+                raise
+
+        elif event == "log_uploaded":
+            # Get the request_ids from the properties
+            try:
+                properties = dict((key, (value, source)) for (key, value, source) in data['payload']['build']['properties'])
+            except KeyError:
+                log.error("couldn't get job properties")
+                msg.ack()
+                return
+
+            request_ids = properties.get('request_ids')
+            if not request_ids:
+                log.error("couldn't get request ids from %s", data)
+                msg.ack()
+                return
+
+            # Sanity check
+            assert request_ids[1] == 'postrun.py'
+
+            try:
+                results = data['payload']['build']['results']
+            except KeyError:
+                log.error("coudn't find job results")
+                msg.ack()
+                return
+
+            # For each request, get the taskId and runId
+            for brid in request_ids[0]:
+                try:
+                    taskId, runId = self.getTaskId(brid)
+                except ValueError:
+                    log.error("Couldn't find task for %i", brid)
+                    continue
+
+                log.info("brid %i : taskId %s : runId %i", brid, taskId, runId)
+
+                # Attach properties as artifacts
+                log.info("attaching properties to task %s", taskId)
+                expires = arrow.now().replace(weeks=1).isoformat()
+                self.createJsonArtifact(taskId, runId, "properties.json", properties, expires)
+
+                # SUCCESS
+                if results == 0:
+                    log.info("marking task %s as completed", taskId)
+                    self.taskcluster_queue.reportCompleted(taskId, runId, {'success': True})
+                    self.deleteBuildrequest(brid)
+                # WARNINGS or FAILURE
+                # Eventually we probably need to set something different here.
+                elif results in (1, 2):
+                    log.info("marking task %s as failed", taskId)
+                    self.taskcluster_queue.reportFailed(taskId, runId)
+                    self.deleteBuildrequest(brid)
+                # SKIPPED - not a valid Build status
+                elif results == 3:
+                    pass
+                # EXCEPTION
+                elif results == 4:
+                    log.info("marking task %s as malformed payload exception", taskId)
+                    self.taskcluster_queue.reportException(taskId, runId, {"reason": "malformed-payload"})
+                    self.deleteBuildrequest(brid)
+                # RETRY
+                elif results == 5:
+                    log.info("marking task %s as malformed payload exception and rerunning", taskId)
+                    self.taskcluster_queue.reportException(taskId, runId, {"reason": "malformed-payload"})
+                    self.taskcluster_queue.rerunTask(taskId)
+                # CANCELLED
+                elif results == 6:
+                    log.info("marking task %s as cancelled", taskId)
+                    self.taskcluster_queue.cancelTask(taskId)
+                    self.deleteBuildrequest(brid)
 
         msg.ack()
 
