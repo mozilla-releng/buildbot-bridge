@@ -270,7 +270,7 @@ class BuildbotBridge(object):
         if event == "started":
             try:
                 msg.ack()
-                buildnumber = data["payload"]["build"]["number"][0]
+                buildnumber = data["payload"]["build"]["number"]
                 brid = self.buildbot_db.execute(
                     sa.text("select buildrequests.id from buildrequests join builds ON buildrequests.id=builds.brid where builds.number=:buildnumber"),
                     buildnumber=buildnumber
