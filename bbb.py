@@ -144,7 +144,7 @@ class BuildbotBridge(object):
 
     def getTask(self, taskId):
         log.info("fetching task %s", taskId)
-        task = self.taskcluster_queue.getTask(taskId)
+        task = self.taskcluster_queue.task(taskId)
         log.debug("task: %s", task)
         return task
 

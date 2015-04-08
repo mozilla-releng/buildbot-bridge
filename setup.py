@@ -10,7 +10,7 @@ setup(
         # Because taskcluster hard pins this version...
         "requests==2.4.3",
         "arrow",
-        "taskcluster",
+        "taskcluster>=0.0.16",
         "sqlalchemy",
         "mozillapulse",
         "redo",
