@@ -267,24 +267,32 @@ class BuildbotBridge(object):
     def receivedBBMessage(self, data, msg):
         log.debug("got %s %s", data, msg)
         event = data["_meta"]["routing_key"].split(".")[-1]
+        # We can't use the "finished" event because "log_uploaded" contains extra
+        # information in properties that we want to pass along
+        if event not in ("started", "log_uploaded"):
+            log.debug("Skipping event because it's not started or log_uploaded")
+            continue
+
         if event == "started":
             try:
                 msg.ack()
                 buildnumber = data["payload"]["build"]["number"]
-                brid = self.buildbot_db.execute(
+                brids = self.buildbot_db.execute(
                     sa.text("select buildrequests.id from buildrequests join builds ON buildrequests.id=builds.brid where builds.number=:buildnumber"),
                     buildnumber=buildnumber
-                ).fetchone()[0]
-                taskId, runId = self.getTaskId(brid)
-                log.info("claiming %s", taskId)
-                claim = self.taskcluster_queue.claimTask(taskId, runId, {
-                    "workerGroup": self.config["taskcluster_worker_group"],
-                    "workerId": self.config["taskcluster_worker_id"],
-                })
-                log.debug("claim: %s", claim)
-                self.tasks_table.update(self.tasks_table.c.buildrequestId==brid).values(
-                    takenUntil=claim["takenUntil"]
-                ).execute()
+                ).fetchall()
+
+                for brid in brids:
+                    taskId, runId = self.getTaskId(brid)
+                    log.info("claiming %s", taskId)
+                    claim = self.taskcluster_queue.claimTask(taskId, runId, {
+                        "workerGroup": self.config["taskcluster_worker_group"],
+                        "workerId": self.config["taskcluster_worker_id"],
+                    })
+                    log.debug("claim: %s", claim)
+                    self.tasks_table.update(self.tasks_table.c.buildrequestId==brid).values(
+                        takenUntil=claim["takenUntil"]
+                    ).execute()
             except:
                 log.exception("problem claiming task; can't proceed")
                 # XXX: Reporting an exception if we were unable to claim may lead
