@@ -409,6 +409,7 @@ class BuildbotBridge(object):
                     log.debug("Buildrequest disappeared, cancelling task.")
                     self.taskcluster_queue.cancelTask(t.taskId)
                     self.deleteBuildrequest(t.buildrequestId)
+                    return
                 # Otherwise we're just waiting for it to start, nothing to do.
                 else:
                     log.debug("Build hasn't started, doing nothing.")
