@@ -221,6 +221,12 @@ class BuildbotBridge(object):
         self.pulse_consumer.listen()
 
     def receivedTCMessage(self, data, msg):
+        # TODO: This method currently claims tasks in TC before a Buildbot
+        # slave picks them up. Instead, it should create the BuildRequest
+        # immeditately, and then something else should claim the task when
+        # the job is started. The reaper can probably do the latter by
+        # listening for additional events from pulse. Or maybe the reclaimer
+        # should do it by polling the buildbot db for BRs that we know about.
         log.debug("got %s %s", data, msg)
         taskId = data['status']['taskId']
         runId = data['status']['runs'][-1]['runId']
