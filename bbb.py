@@ -283,6 +283,7 @@ class BuildbotBridge(object):
                 ).fetchall()
 
                 for brid in brids:
+                    brid = brid[0]
                     taskId, runId = self.getTaskId(brid)
                     log.info("claiming %s", taskId)
                     claim = self.taskcluster_queue.claimTask(taskId, runId, {
