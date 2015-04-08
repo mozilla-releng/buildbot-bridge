@@ -405,6 +405,7 @@ class BuildbotBridge(object):
                 # If the buildrequest is showing complete, it was cancelled
                 # before it ever started, so we need to pass that along to
                 # taskcluster
+                # TODO: Can we detect this with a pulse message instead?
                 if buildrequest.complete:
                     log.debug("Buildrequest disappeared, cancelling task.")
                     self.taskcluster_queue.cancelTask(t.taskId)
