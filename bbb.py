@@ -366,7 +366,7 @@ class BuildbotBridge(object):
                     self.taskcluster_queue.cancelTask(taskId)
                     self.deleteBuildrequest(brid)
 
-        msg.ack()
+            msg.ack()
 
     def start_reclaimer(self):
         while True:
