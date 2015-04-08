@@ -270,7 +270,7 @@ class BuildbotBridge(object):
         if event == "started":
             try:
                 msg.ack()
-                buildnumber = data["payload"]["build"]["number"]
+                buildnumber = data["payload"]["build"]["number"][0]
                 brid = self.buildbot_db.execute(
                     sa.text("select buildrequests.id from buildrequests join builds ON buildrequests.id=builds.brid where builds.number=:buildnumber"),
                     buildnumber=buildnumber
@@ -388,6 +388,9 @@ class BuildbotBridge(object):
                                          buildrequestId=t.buildrequestId).fetchall()
             log.debug("Task info: %s", t)
             log.debug("Buildrequest: %s", buildrequest)
+            if not t.takenUntil:
+                # don't do anything because the task hasn't been claimed yet
+                continue
             if not buildrequest:
                 # TODO: delete the task
                 pass
