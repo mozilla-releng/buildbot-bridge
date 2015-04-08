@@ -404,7 +404,7 @@ class BuildbotBridge(object):
                 # TODO: delete the task
                 pass
             elif buildrequest.complete:
-                # TODO: have a max time here?
+                # TODO: delete from tasks table?
                 log.info("buildrequest %i is done", t.buildrequestId)
                 continue
 
