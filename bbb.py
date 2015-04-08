@@ -271,7 +271,7 @@ class BuildbotBridge(object):
         # information in properties that we want to pass along
         if event not in ("started", "log_uploaded"):
             log.debug("Skipping event because it's not started or log_uploaded")
-            continue
+            return
 
         if event == "started":
             try:
