@@ -399,13 +399,19 @@ class BuildbotBridge(object):
                                          buildrequestId=t.buildrequestId).fetchall()
             log.debug("Task info: %s", t)
             log.debug("Buildrequest: %s", buildrequest)
-            if not buildrequest:
-                log.debug("Buildrequest disappeared, cancelling task.")
-                self.taskcluster_queue.cancelTask(t.taskId)
-                self.deleteBuildrequest(t.buildrequestId)
-            elif not t.takenUntil:
-                log.debug("Build hasn't started, doing nothing.")
-                continue
+            # If takenUntil isn't set, this task has either never been claimed
+            # or got cancelled.
+            if not t.takenUntil:
+                # If the buildrequest is showing complete, it was cancelled
+                # before it ever started, so we need to pass that along to
+                # taskcluster
+                if buildrequest.complete:
+                    log.debug("Buildrequest disappeared, cancelling task.")
+                    self.taskcluster_queue.cancelTask(t.taskId)
+                    self.deleteBuildrequest(t.buildrequestId)
+                # Otherwise we're just waiting for it to start, nothing to do.
+                else:
+                    log.debug("Build hasn't started, doing nothing.")
             elif buildrequest.complete:
                 # TODO: delete from tasks table?
                 log.info("buildrequest %i is done", t.buildrequestId)
