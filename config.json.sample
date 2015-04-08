@@ -15,5 +15,6 @@
     "taskcluster_pulse_exchange": "exchange/taskcluster-queue/v1/task-pending",
     "taskcluster_pulse_topic": "*.*.*.*.*.*.test-buildbot.#",
     "buildbot_pulse_exchange": "exchange/build",
-    "buildbot_pulse_topic": "*.*.*.log_uploaded"
+    "build_started_pulse_topic": "build.*.*.started",
+    "build_finished_pulse_topic": "build.*.*.log_uploaded"
 }

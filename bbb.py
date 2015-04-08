@@ -213,11 +213,14 @@ class BuildbotBridge(object):
             ssl=False
         )
         pulse_exchange = self.config['buildbot_pulse_exchange']
-        pulse_topic = self.config['buildbot_pulse_topic']
+        build_started_topic = self.config['build_started_pulse_topic']
+        build_finished_topic = self.config['build_finished_pulse_topic']
 
         self.pulse_consumer = GenericConsumer(pulse_config, exchange=pulse_exchange)
-        self.pulse_consumer.configure(topic=pulse_topic, callback=self.receivedBBMessage)
-        log.info("listening for pulse messages on %s/%s...", pulse_exchange, pulse_topic)
+        self.pulse_consumer.configure(topic=build_started_topic, callback=self.buildStarted)
+        self.pulse_consumer.configure(topic=build_finished_topic, callback=self.receivedBBMessage)
+        log.info("listening for pulse messages on %s/%s...", pulse_exchange, build_started_topic)
+        log.info("listening for pulse messages on %s/%s...", pulse_exchange, build_finished_topic)
         self.pulse_consumer.listen()
 
     def receivedTCMessage(self, data, msg):
@@ -238,29 +241,6 @@ class BuildbotBridge(object):
         # the message in the queue for other consumers.
         msg.ack()
 
-        # The taskcluster library handles retries for any methods that touch
-        # the network, so there's no need for us to do any of that here. If
-        # any of its methods end up raising an error, retrying is very unlikely
-        # to yield a different result.
-        try:
-            task = self.getTask(taskId)
-            log.info("claiming %s", taskId)
-            claim = self.taskcluster_queue.claimTask(taskId, runId, {
-                "workerGroup": self.config["taskcluster_worker_group"],
-                "workerId": self.config["taskcluster_worker_id"],
-            })
-            log.debug("claim: %s", claim)
-        except:
-            log.exception("problem claiming task; can't proceed")
-            # XXX: Reporting an exception if we were unable to claim may lead
-            # to inconsistent state between buildbot and TC. No matter what
-            # happens with the claim, Buildbot will retry the build, so if
-            # we report an exception here in that case, TC will think the
-            # build has had an exception even though it hasn't. However,
-            # the reaper _should_ fix the status after the build has completed.
-            self.taskcluster_queue.reportException(taskId, runId, {"reason": "malformed-payload"})
-            raise
-
 
         # If the task already exists in the bridge database we just need to
         # update its runId. If we created a new BuildRequest for it we'll end
@@ -273,6 +253,7 @@ class BuildbotBridge(object):
             # database retrying may help. This is done by reporting a special
             # exception to TC and letting it requeue the task.
             try:
+                task = self.getTask(taskId)
                 buildrequestId = inject_task(self.buildbot_db, taskId, task, task['payload'])
                 self.tasks_table.insert().values(
                     taskId=taskId,
@@ -280,12 +261,40 @@ class BuildbotBridge(object):
                     buildrequestId=buildrequestId,
                     createdDate=parseDateString(task['created']),
                     processedDate=arrow.now().timestamp,
-                    takenUntil=parseDateString(claim['takenUntil'])
                 ).execute()
             except:
                 log.exception("problem handling task; re-queuing")
                 self.taskcluster_queue.reportException(taskId, runId, {"reason": "worker-shutdown"})
                 raise
+
+    def buildStarted(self, data, msg):
+        try:
+            msg.ack()
+            buildnumber = data["payload"]["build"]["number"]
+            brid = self.buildbot_db.execute(
+                sa.text("select buildrequests.id from buildrequests join builds ON buildrequests.id=builds.brid where builds.number=:buildnumber"),
+                buildnumber=buildnumber
+            ).fetchone()
+            taskId, runId = self.getTaskId(brid)
+            log.info("claiming %s", taskId)
+            claim = self.taskcluster_queue.claimTask(taskId, runId, {
+                "workerGroup": self.config["taskcluster_worker_group"],
+                "workerId": self.config["taskcluster_worker_id"],
+            })
+            log.debug("claim: %s", claim)
+            self.tasks_table.update(self.tasks_table.c.buildrequestId==brid).values(
+                takenUntil=claim["takenUntil"]
+            ).execute()
+        except:
+            log.exception("problem claiming task; can't proceed")
+            # XXX: Reporting an exception if we were unable to claim may lead
+            # to inconsistent state between buildbot and TC. No matter what
+            # happens with the claim, Buildbot will retry the build, so if
+            # we report an exception here in that case, TC will think the
+            # build has had an exception even though it hasn't. However,
+            # the reaper _should_ fix the status after the build has completed.
+            self.taskcluster_queue.reportException(taskId, runId, {"reason": "malformed-payload"})
+            raise
 
     def receivedBBMessage(self, data, msg):
         log.debug("got %s %s", data, msg)
