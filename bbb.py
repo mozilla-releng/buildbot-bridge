@@ -274,7 +274,7 @@ class BuildbotBridge(object):
                 brid = self.buildbot_db.execute(
                     sa.text("select buildrequests.id from buildrequests join builds ON buildrequests.id=builds.brid where builds.number=:buildnumber"),
                     buildnumber=buildnumber
-                ).fetchone()
+                ).fetchone()[0]
                 taskId, runId = self.getTaskId(brid)
                 log.info("claiming %s", taskId)
                 claim = self.taskcluster_queue.claimTask(taskId, runId, {
