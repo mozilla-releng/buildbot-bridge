@@ -267,6 +267,8 @@ class BuildbotBridge(object):
     def receivedBBMessage(self, data, msg):
         log.debug("got %s %s", data, msg)
         event = data["_meta"]["routing_key"].split(".")[-1]
+        # TODO: is this accurate? are there any log_uploaded specific properties
+        # that matter? maybe log_url?
         # We can't use the "finished" event because "log_uploaded" contains extra
         # information in properties that we want to pass along
         if event not in ("started", "log_uploaded"):
