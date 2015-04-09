@@ -27,12 +27,26 @@ class BBBDb(object):
         metadata.create_all(self.db)
 
     def getTask(self, taskId):
-        return self.tasks_table.select(self.tasks_table.c.taskId == taskId).execute().fetchone()
+        log.info("Fetching task %s", taskId)
+        task = self.tasks_table.select(self.tasks_table.c.taskId == taskId).execute().fetchone()
+        log.debug("Task: %s", task)
+        return task
+
+    def getTaskFromBuildRequest(self, brid):
+        task = self.tasks_table.select(self.tasks_table.c.buildrequestId == brid).execute().fetchone()
+        if not task:
+            raise ValueError("Couldn't find task for brid %i", brid)
+        return task
 
     def getAllTasks(self):
-        return self.tasks_table.select().execute().fetchall()
+        log.debug("Fetching all tasks")
+        tasks = self.tasks_table.select().execute().fetchall()
+        log.debug("Tasks: %s", tasks)
+        return tasks
 
     def createTask(self, taskId, runId, brid, createdDate):
+        log.info("Creating task %s", taskId)
+        log.debug("Task info: runId: %s, brid: %s, created: %s", runId, brid, createdDate)
         self.tasks_table.insert().values(
             taskId=taskId,
             runId=runId,
@@ -42,13 +56,16 @@ class BBBDb(object):
         ).execute()
 
     def deleteBuildRequest(self, brid):
+        log.info("Deleting task with brid %s", brid)
         self.tasks_table.delete(self.tasks_table.c.buildrequestId == brid).execute()
 
     def updateRunId(self, brid, runId):
+        log.info("Updating task with brid %s to runId %s", brid, runId)
         self.tasks_table.update(self.tasks_table.c.buildrequestId == brid).values(runId=runId).execute()
 
     def updateTakenUntil(self, brid, takenUntil):
-        self.tasks_table.update(self.tasks_table.c.buildrequestId == brid).values(takenUntil=takenUntil)
+        log.debug("Updating task with brid %s to takenUntil %s", brid, takenUntil)
+        self.tasks_table.update(self.tasks_table.c.buildrequestId == brid).values(takenUntil=takenUntil).execute()
 
 class BuildbotDb(object):
     def __init__(self, uri):
@@ -56,6 +73,12 @@ class BuildbotDb(object):
 
     def getBuildRequest(self, brid):
         return self.db.execute(sa.text("select * from buildrequests where id=:brid", brid=brid)).fetchone()
+
+    def getBuildRequests(self, buildnumber):
+        return self.db.execute(
+            sa.text("select buildrequests.id from buildrequests join builds ON buildrequests.id=builds.brid where builds.number=:buildnumber"),
+            buildnumber=buildnumber,
+        ).fetchall()
 
     def getBuilds(self, brid):
         return self.db.execute(sa.text("select * from builds where brid=:brid", brid=brid)).fetchall()

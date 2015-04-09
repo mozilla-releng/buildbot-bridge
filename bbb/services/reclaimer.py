@@ -49,6 +49,8 @@ class Reclaimer(ServiceBase):
             # but the BBListener should come along and get rid of it soon.
             elif buildrequest.complete:
                 log.info("BuildRequest %i is done, BBListener should process it soon", t.buildrequestId)
+                continue
+
             # Build is running, which means it has already been claimed.
             # We need to renew the claim to make sure Taskcluster doesn't
             # expire it on us.
