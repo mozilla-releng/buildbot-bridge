@@ -9,6 +9,8 @@ import logging
 log = logging.getLogger(__name__)
 
 class Reclaimer(ServiceBase):
+    # TODO: This probably needs a better name since it deals with cancellations
+    # as well as reclaims. Or maybe we don't care.
     def __init__(self, interval, *args, **kwargs):
         super(Reclaimer, self).__init__(*args, **kwargs)
         self.interval = interval
