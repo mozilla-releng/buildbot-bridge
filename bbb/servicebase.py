@@ -158,7 +158,7 @@ class ServiceBase(object):
 
 class ListenerService(object):
     """A base for BBB services that run in response to events from Pulse."""
-    def __init__(self, user, password, exchange, topic, *args, **kwargs):
+    def __init__(self, user, password, exchange, topic, eventHandlers, *args, **kwargs):
         super(ListenerService, self).__init__(*args, **kwargs)
 
         self.pulse_config = PulseConfiguration(
@@ -169,6 +169,7 @@ class ListenerService(object):
         )
         self.exchange = exchange
         self.topic = topic
+        self.eventHandlers = eventHandlers
         self.pulse_consumer = GenericConsumer(self.pulse_config, durable=True, exchange=exchange)
         self.pulse_consumer.configure(topic=topic, callback=self.receivedMessage)
 
@@ -178,5 +179,17 @@ class ListenerService(object):
         log.debug("Topic is %s", self.topic)
         self.pulse_consumer.listen()
 
-    def receivedMessage(self, *args):
+    def receivedMessage(self, data, msg):
+        log.info("Received message on %s", data["_meta"]["routing_key"])
+        log.debug("Got %s %s", data, msg)
+
+        event = self.getEvent(data)
+
+        log.info("Handling event: %s", event)
+        self.eventHandlers(event)(data, msg)
+        # TODO: Should we ack here even if there was an exception? Retrying
+        # the same message over and over again may not work.
+        msg.ack()
+
+    def getEvent(self, *args, **kwargs):
         raise NotImplementedError()
