@@ -2,7 +2,8 @@ import time
 
 from taskcluster.exceptions import TaskclusterRestFailure
 
-from ..servicebase import ServiceBase, parseDateString
+from ..servicebase import ServiceBase
+from ..timeutils import parseDateString
 
 import logging
 log = logging.getLogger(__name__)

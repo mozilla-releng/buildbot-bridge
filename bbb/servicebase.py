@@ -6,66 +6,25 @@ from mozillapulse.consumers import GenericConsumer
 import sqlalchemy as sa
 from taskcluster import Queue
 
+from .timeutils import parseDateString
+
 import logging
 log = logging.getLogger(__name__)
-
-
-def parseDateString(datestring):
-    """
-    Parses a date string like 2015-02-13T19:33:37.075719Z and returns a unix epoch time
-    """
-    return arrow.get(datestring).timestamp
-
-
-def create_sourcestamp(db, sourcestamp={}):
-    q = sa.text("""INSERT INTO sourcestamps
-                (`branch`, `revision`, `patchid`, `repository`, `project`)
-            VALUES
-                (:branch, :revision, NULL, :repository, :project)
-            """)
-    branch = sourcestamp.get('branch')
-    revision = sourcestamp.get('revision')
-    repository = sourcestamp.get('repository', '')
-    project = sourcestamp.get('project', '')
-
-    r = db.execute(q, branch=branch, revision=revision, repository=repository, project=project)
-    ssid = r.lastrowid
-    log.info("Created sourcestamp %s", ssid)
-
-    # TODO: Create change objects, files, etc.
-    return ssid
-
-
-def create_buildset_properties(db, buildsetid, properties):
-    q = sa.text("""INSERT INTO buildset_properties
-            (`buildsetid`, `property_name`, `property_value`)
-            VALUES
-            (:buildsetid, :key, :value)
-            """)
-    props = {}
-    props.update(((k, json.dumps((v, "bbb"))) for (k, v) in properties.iteritems()))
-    for key, value in props.items():
-        db.execute(q, buildsetid=buildsetid, key=key, value=value)
-        log.info("Created buildset_property %s=%s", key, value)
-
-def create_tasks_table(db):
-    meta = sa.MetaData(db)
-    tasks = sa.Table('tasks', meta,
-                     sa.Column('buildrequestId', sa.Integer, primary_key=True),
-                     sa.Column('taskId', sa.String(32), index=True),
-                     sa.Column('runId', sa.Integer),
-                     sa.Column('createdDate', sa.Integer),  # When the task was submitted to TC
-                     sa.Column('processedDate', sa.Integer),  # When we put it into BB
-                     sa.Column('takenUntil', sa.Integer, index=True),  # How long until our claim needs to be renewed
-                     )
-    meta.create_all(db)
-    return tasks
 
 
 class BBBDb(object):
     def __init__(self, uri):
         self.db = sa.create_engine(uri)
-        self.tasks_table = create_tasks_table(self.bbb_db)
+        metadata = sa.MetaData(self.db)
+        self.tasks_table = sa.Table('tasks', metadata,
+            sa.Column('buildrequestId', sa.Integer, primary_key=True),
+            sa.Column('taskId', sa.String(32), index=True),
+            sa.Column('runId', sa.Integer),
+            sa.Column('createdDate', sa.Integer),  # When the task was submitted to TC
+            sa.Column('processedDate', sa.Integer),  # When we put it into BB
+            sa.Column('takenUntil', sa.Integer, index=True),  # How long until our claim needs to be renewed
+        )
+        metadata.create_all(self.db)
 
     def getTask(self, taskId):
         return self.tasks_table.select(self.tasks_table.c.taskId == taskId).execute().fetchone()
@@ -101,12 +60,42 @@ class BuildbotDb(object):
     def getBuilds(self, brid):
         return self.db.execute(sa.text("select * from builds where brid=:brid", brid=brid)).fetchall()
 
+    def createSourceStamp(self, sourcestamp={}):
+        q = sa.text("""INSERT INTO sourcestamps
+                    (`branch`, `revision`, `patchid`, `repository`, `project`)
+                VALUES
+                    (:branch, :revision, NULL, :repository, :project)
+                """)
+        branch = sourcestamp.get('branch')
+        revision = sourcestamp.get('revision')
+        repository = sourcestamp.get('repository', '')
+        project = sourcestamp.get('project', '')
+
+        r = self.db.execute(q, branch=branch, revision=revision, repository=repository, project=project)
+        ssid = r.lastrowid
+        log.info("Created sourcestamp %s", ssid)
+
+        # TODO: Create change objects, files, etc.
+        return ssid
+
+    def createBuildSetProperties(self, buildsetid, properties):
+        q = sa.text("""INSERT INTO buildset_properties
+                (`buildsetid`, `property_name`, `property_value`)
+                VALUES
+                (:buildsetid, :key, :value)
+                """)
+        props = {}
+        props.update(((k, json.dumps((v, "bbb"))) for (k, v) in properties.iteritems()))
+        for key, value in props.items():
+            self.db.execute(q, buildsetid=buildsetid, key=key, value=value)
+            log.info("Created buildset_property %s=%s", key, value)
+
     def injectTask(self, taskId, task):
         payload = task["payload"]
         # Create a sourcestamp if necessary
         sourcestamp = payload.get('sourcestamp', {})
 
-        sourcestampid = create_sourcestamp(self.db, sourcestamp)
+        sourcestampid = self.createSourceStamp(self.db, sourcestamp)
 
         # Create a buildset
         q = sa.text("""INSERT INTO buildsets
@@ -132,7 +121,7 @@ class BuildbotDb(object):
         properties = payload.get('properties', {})
         # Always create a property for the taskId
         properties['taskId'] = taskId
-        create_buildset_properties(self.db, buildsetid, properties)
+        self.createBuildSetProperties(self.db, buildsetid, properties)
 
         # Create the buildrequest
         buildername = payload['buildername']
