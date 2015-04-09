@@ -5,6 +5,15 @@ log = logging.getLogger(__name__)
 
 
 class TCListener(ListenerService):
+    def __init__(self, *args, **kwargs):
+        self.eventHandlers = {
+            "task-pending": self.handlePending,
+            "task-exception": self.handleCancellation,
+        }
+
+    def getEvent(self, exchange):
+        return exchange.split("/")[-1].replace("-", "_")
+
     def receivedMessage(self, data, msg):
         log.info("Received message on %s", data["_meta"]["routing_key"])
         log.debug("Got %s %s", data, msg)
@@ -12,6 +21,14 @@ class TCListener(ListenerService):
         taskId = data["status"]["taskId"]
         runId = data["status"]["runs"][-1]["runId"]
 
+        event = data["exchange"].split("/")[-1]
+        log.info("Handling event: %s", event)
+        self.eventHandlers(event)(taskId, runId)
+        # TODO: Should we ack here even if there was an exception? Retrying
+        # the same message over and over again may not work.
+        msg.ack()
+
+    def handlePending(self, taskId, runId):
         ourTask = self.bbb_db.getTask(taskId)
         # If the task already exists in the bridge database we just need to
         # update our runId. If we created a new BuildRequest for it we'd end
@@ -28,7 +45,6 @@ class TCListener(ListenerService):
             brid = self.buildbot_db.injectTask(taskId, tcTask)
             self.bbb_db.createTask(taskId, runId, brid, tcTask["created"])
 
-        # TODO: Probably should ack earlier and do something different if we
-        # hit exceptions. Retrying the same message over and over again may
-        # not always fix things.
-        msg.ack()
+    def handleCancellation(self, taskId, runId):
+        # TODO: implement me
+        pass
