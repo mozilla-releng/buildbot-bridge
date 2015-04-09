@@ -70,6 +70,9 @@ class BBBDb(object):
     def getTask(self, taskId):
         return self.tasks_table.select(self.tasks_table.c.taskId == taskId).execute().fetchone()
 
+    def getAllTasks(self):
+        return self.tasks_table.select().execute().fetchall()
+
     def createTask(self, taskId, runId, brid, createdDate):
         self.tasks_table.insert().values(
             taskId=taskId,
@@ -85,10 +88,18 @@ class BBBDb(object):
     def updateRunId(self, brid, runId):
         self.tasks_table.update(self.tasks_table.c.buildrequestId == brid).values(runId=runId).execute()
 
+    def updateTakenUntil(self, brid, takenUntil):
+        self.tasks_table.update(self.tasks_table.c.buildrequestId == brid).values(takenUntil=takenUntil)
 
 class BuildbotDb(object):
     def __init__(self, uri):
         self.db = sa.create_engine(uri)
+
+    def getBuildRequest(self, brid):
+        return self.db.execute(sa.text("select * from buildrequests where id=:brid", brid=brid)).fetchone()
+
+    def getBuilds(self, brid):
+        return self.db.execute(sa.text("select * from builds where brid=:brid", brid=brid)).fetchall()
 
     def injectTask(self, taskId, task):
         payload = task["payload"]
@@ -177,7 +188,7 @@ class ListenerService(object):
         log.info("Listening for Pulse messages")
         log.debug("Exchange is %s", self.exchange)
         log.debug("Topic is %s", self.topic)
-        self.pulse_consumer.listen()
+        #self.pulse_consumer.listen()
 
     def receivedMessage(self, data, msg):
         log.info("Received message on %s", data["_meta"]["routing_key"])
