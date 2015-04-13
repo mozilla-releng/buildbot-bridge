@@ -156,6 +156,9 @@ INSERT INTO builds
 
     # TODO: tests for some error cases, like failing to contact TC, or maybe db operations failing
 
+    # Passing new=Mock prevents patch from passing the patched object,
+    # which we have no need of, to this method.
+    @patch("requests.put", new=Mock)
     def _handleFinishedTest(self, results):
         self.buildbot_db.execute(sa.text("""
 INSERT INTO buildrequests
@@ -184,8 +187,7 @@ INSERT INTO builds
             "storageType": "s3",
             "putUrl": "http://foo.com",
         }
-        with patch("requests.put") as fake_put:
-            self.bblistener.handleFinished(data, {})
+        self.bblistener.handleFinished(data, {})
 
     def testHandleFinishedSuccess(self):
         self._handleFinishedTest(SUCCESS)
