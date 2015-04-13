@@ -6,7 +6,7 @@ import logging
 log = logging.getLogger(__name__)
 
 
-def createJsonArtifact(self, queue, taskId, runId, name, data, expires):
+def createJsonArtifact(queue, taskId, runId, name, data, expires):
     data = json.dumps(data)
     resp = queue.createArtifact(taskId, runId, name, {
         "storageType": "s3",

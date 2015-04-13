@@ -1,9 +1,9 @@
-from mock import Mock
+from mock import Mock, patch
 import unittest
 
 import sqlalchemy as sa
 
-from ...services.bblistener import BuildbotListener
+from ...services.bblistener import BuildbotListener, SUCCESS
 
 
 def make_fake_schedulerdb(db):
@@ -147,3 +147,41 @@ INSERT INTO builds
         self.assertEquals(len(bbb_state), 2)
         self.assertEquals(bbb_state[0].takenUntil, 80)
         self.assertEquals(bbb_state[1].takenUntil, 80)
+
+    # TODO: tests for some error cases, like failing to contact TC, or maybe db operations failing
+
+    def testHandleFinishedSuccess(self):
+        self.buildbot_db.execute(sa.text("""
+INSERT INTO buildrequests
+    (id, buildsetid, buildername, submitted_at, complete, complete_at, results)
+    VALUES (1, 0, "foo", 5, 1, 30, 0);"""))
+        self.buildbot_db.execute(sa.text("""
+INSERT INTO builds
+    (id, number, brid, start_time, finish_time)
+    VALUES (0, 0, 1, 15, 30);"""))
+        self.tasks.insert().execute(
+            buildrequestId=1,
+            taskId="-kJmnenARgOUZQRdiA1xaA",
+            runId=0,
+            createdDate=5,
+            processedDate=10,
+            takenUntil=100,
+        )
+
+        data = {"payload": {"build": {
+            "properties": (
+                ("request_ids", (1,), "postrun.py"),
+            ),
+            "results": SUCCESS,
+        }}}
+        self.bblistener.tc_queue.createArtifact.return_value = {
+            "storageType": "s3",
+            "putUrl": "http://foo.com",
+        }
+        with patch("requests.put") as fake_put:
+            self.bblistener.handleFinished(data, {})
+
+        self.assertEquals(self.bblistener.tc_queue.createArtifact.call_count, 1)
+        self.assertEquals(self.bblistener.tc_queue.reportCompleted.call_count, 1)
+        # Build and Task are done - should be deleted from our db.
+        self.assertEquals(self.tasks.count().execute().fetchone()[0], 0)

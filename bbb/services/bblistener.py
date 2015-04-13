@@ -63,7 +63,7 @@ class BuildbotListener(ListenerService):
         # For each request, get the taskId and runId
         for brid in request_ids[0]:
             try:
-                task = self.getTaskFromBuildRequest(brid)
+                task = self.bbb_db.getTaskFromBuildRequest(brid)
                 taskId = task.taskId
                 runId = task.runId
             except ValueError:
