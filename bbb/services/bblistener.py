@@ -21,8 +21,8 @@ class BuildbotListener(ListenerService):
 
         super(BuildbotListener, self).__init__(*args, eventHandlers=eventHandlers, **kwargs)
 
-    def getEvent(self, data):
-        return data["_meta"]["routing_key"].split(".")[-1]
+    def getEvent(self, data, msg):
+        return msg.delivery_info["routing_key"].split(".")[-1]
 
     def handleStarted(self, data, msg):
         # TODO: Error handling?

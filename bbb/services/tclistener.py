@@ -12,8 +12,8 @@ class TCListener(ListenerService):
         }
         super(TCListener, self).__init__(*args, eventHandlers=eventHandlers, **kwargs)
 
-    def getEvent(self, data):
-        return data["exchange"].split("/")[-1]
+    def getEvent(self, data, msg):
+        return msg.delivery_info["exchange"].split("/")[-1]
 
     def handlePending(self, data, msg):
         taskId = data["status"]["taskId"]
