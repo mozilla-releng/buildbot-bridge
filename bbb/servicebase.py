@@ -211,7 +211,7 @@ class ListenerService(ServiceBase):
         event = self.getEvent(data, msg)
 
         log.info("Handling event: %s", event)
-        self.eventHandlers(event)(data, msg)
+        self.eventHandlers[event](data, msg)
         # TODO: Should we ack here even if there was an exception? Retrying
         # the same message over and over again may not work.
         msg.ack()
