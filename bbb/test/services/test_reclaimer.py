@@ -29,6 +29,30 @@ class TestReclaimer(unittest.TestCase):
         self.tasks = self.reclaimer.bbb_db.tasks_table
         self.buildbot_db = self.reclaimer.buildbot_db.db
 
+    def testReclaimRunningTask(self):
+        taskId = makeTaskId()
+        self.buildbot_db.execute(sa.text("""
+INSERT INTO buildrequests
+    (id, buildsetid, buildername, submitted_at)
+    VALUES (2, 0, "foo", 15);
+"""))
+        self.tasks.insert().execute(
+            buildrequestId=2,
+            taskId=taskId,
+            runId=0,
+            createdDate=12,
+            processedDate=17,
+            takenUntil=200,
+        )
+
+        self.reclaimer.tc_queue.reclaimTask.return_value = {"takenUntil": 300}
+        self.reclaimer.reclaimTasks()
+
+        self.assertEquals(self.reclaimer.tc_queue.reclaimTask.call_count, 1)
+        bbb_state = self.tasks.select().execute().fetchall()
+        self.assertEquals(len(bbb_state), 1)
+        self.assertEquals(bbb_state[0].takenUntil, 300)
+
     def testPendingTask(self):
         taskId = makeTaskId()
         self.buildbot_db.execute(sa.text("""
