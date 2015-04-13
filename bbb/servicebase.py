@@ -205,8 +205,8 @@ class ListenerService(ServiceBase):
         self.pulse_consumer.listen()
 
     def receivedMessage(self, data, msg):
-        log.info("Received message on %s", data["_meta"]["routing_key"])
         log.debug("Got %s %s", data, msg)
+        log.info("Received message on %s", data["_meta"]["routing_key"])
 
         event = self.getEvent(data)
 
