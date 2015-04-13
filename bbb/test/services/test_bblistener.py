@@ -65,11 +65,11 @@ INSERT INTO builds
         self.buildbot_db.execute(sa.text("""
 INSERT INTO buildrequests
     (id, buildsetid, buildername, submitted_at)
-    VALUES (2, 0, "foo", 20), (3, 0, "foo", 30);"""))
+    VALUES ((2, 0, "foo", 20), (3, 0, "foo", 30));"""))
         self.buildbot_db.execute(sa.text("""
 INSERT INTO builds
     (id, number, brid, start_time)
-    VALUES (0, 3, 2, 40), (1, 3, 3, 40);"""))
+    VALUES ((0, 3, 2, 40), (1, 3, 3, 40));"""))
         self.tasks.insert().execute(
             buildrequestId=2,
             taskId=makeTaskId(),
