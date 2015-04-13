@@ -1,10 +1,16 @@
+from base64 import b64encode
 from mock import Mock, patch
 import unittest
+from uuid import uuid4
 
 import sqlalchemy as sa
 
-from ...services.bblistener import BuildbotListener, SUCCESS
+from ...services.bblistener import BuildbotListener, SUCCESS, WARNINGS, \
+    FAILURE, EXCEPTION, RETRY, CANCELLED
 
+
+def makeTaskId():
+    return b64encode(uuid4().bytes).replace("+", "-").replace("/", "-").rstrip("=")
 
 def make_fake_schedulerdb(db):
     db.execute(sa.text("""
@@ -98,7 +104,7 @@ INSERT INTO builds
     VALUES (0, 2, 4, 60);"""))
         self.tasks.insert().execute(
             buildrequestId=4,
-            taskId="OAgHxS9MRQSajDpOaChY6g",
+            taskId=makeTaskId(),
             runId=0,
             createdDate=50,
             processedDate=60,
@@ -124,7 +130,7 @@ INSERT INTO builds
     VALUES (0, 3, 2, 40), (1, 3, 3, 40);"""))
         self.tasks.insert().execute(
             buildrequestId=2,
-            taskId="HbrXRXnEQbG9vh0sMnEjcQ",
+            taskId=makeTaskId(),
             runId=0,
             createdDate=20,
             processedDate=35,
@@ -132,7 +138,7 @@ INSERT INTO builds
         )
         self.tasks.insert().execute(
             buildrequestId=3,
-            taskId="U2h2XEZcRnCZaULOymd2MQ",
+            taskId=makeTaskId(),
             runId=0,
             createdDate=30,
             processedDate=35,
@@ -150,7 +156,7 @@ INSERT INTO builds
 
     # TODO: tests for some error cases, like failing to contact TC, or maybe db operations failing
 
-    def testHandleFinishedSuccess(self):
+    def _handleFinishedTest(self, results):
         self.buildbot_db.execute(sa.text("""
 INSERT INTO buildrequests
     (id, buildsetid, buildername, submitted_at, complete, complete_at, results)
@@ -161,7 +167,7 @@ INSERT INTO builds
     VALUES (0, 0, 1, 15, 30);"""))
         self.tasks.insert().execute(
             buildrequestId=1,
-            taskId="-kJmnenARgOUZQRdiA1xaA",
+            taskId=makeTaskId(),
             runId=0,
             createdDate=5,
             processedDate=10,
@@ -172,7 +178,7 @@ INSERT INTO builds
             "properties": (
                 ("request_ids", (1,), "postrun.py"),
             ),
-            "results": SUCCESS,
+            "results": results,
         }}}
         self.bblistener.tc_queue.createArtifact.return_value = {
             "storageType": "s3",
@@ -181,7 +187,50 @@ INSERT INTO builds
         with patch("requests.put") as fake_put:
             self.bblistener.handleFinished(data, {})
 
+    def testHandleFinishedSuccess(self):
+        self._handleFinishedTest(SUCCESS)
+
         self.assertEquals(self.bblistener.tc_queue.createArtifact.call_count, 1)
         self.assertEquals(self.bblistener.tc_queue.reportCompleted.call_count, 1)
+        # Build and Task are done - should be deleted from our db.
+        self.assertEquals(self.tasks.count().execute().fetchone()[0], 0)
+
+    def testHandleFinishedWarnings(self):
+        self._handleFinishedTest(WARNINGS)
+
+        self.assertEquals(self.bblistener.tc_queue.createArtifact.call_count, 1)
+        self.assertEquals(self.bblistener.tc_queue.reportFailed.call_count, 1)
+        # Build and Task are done - should be deleted from our db.
+        self.assertEquals(self.tasks.count().execute().fetchone()[0], 0)
+
+    def testHandleFinishedFailed(self):
+        self._handleFinishedTest(FAILURE)
+
+        self.assertEquals(self.bblistener.tc_queue.createArtifact.call_count, 1)
+        self.assertEquals(self.bblistener.tc_queue.reportFailed.call_count, 1)
+        # Build and Task are done - should be deleted from our db.
+        self.assertEquals(self.tasks.count().execute().fetchone()[0], 0)
+
+    def testHandleFinishedException(self):
+        self._handleFinishedTest(EXCEPTION)
+
+        self.assertEquals(self.bblistener.tc_queue.createArtifact.call_count, 1)
+        self.assertEquals(self.bblistener.tc_queue.reportException.call_count, 1)
+        # Build and Task are done - should be deleted from our db.
+        self.assertEquals(self.tasks.count().execute().fetchone()[0], 0)
+
+    def testHandleFinishedRetry(self):
+        self._handleFinishedTest(RETRY)
+
+        self.assertEquals(self.bblistener.tc_queue.createArtifact.call_count, 1)
+        self.assertEquals(self.bblistener.tc_queue.reportException.call_count, 1)
+        # Unlike other status, the BuildRequest is NOT finished if a RETRY is hit
+        self.assertEquals(self.tasks.count().execute().fetchone()[0], 1)
+
+    def testHandleFinishedCancelled(self):
+        self._handleFinishedTest(CANCELLED)
+
+        self.assertEquals(self.bblistener.tc_queue.createArtifact.call_count, 1)
+        self.assertEquals(self.bblistener.tc_queue.cancelTask.call_count, 1)
         # Build and Task are done - should be deleted from our db.
         self.assertEquals(self.tasks.count().execute().fetchone()[0], 0)
