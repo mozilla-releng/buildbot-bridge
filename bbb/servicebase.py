@@ -182,7 +182,7 @@ class ServiceBase(object):
 
 class ListenerService(ServiceBase):
     """A base for BBB services that run in response to events from Pulse."""
-    def __init__(self, pulse_user, pulse_password, exchange, topic, eventHandlers, *args, **kwargs):
+    def __init__(self, pulse_user, pulse_password, exchange, topic, applabel, eventHandlers, *args, **kwargs):
         super(ListenerService, self).__init__(*args, **kwargs)
 
         self.pulse_config = PulseConfiguration(
@@ -193,8 +193,9 @@ class ListenerService(ServiceBase):
         )
         self.exchange = exchange
         self.topic = topic
+        self.applabel = applabel
         self.eventHandlers = eventHandlers
-        self.pulse_consumer = GenericConsumer(self.pulse_config, durable=True, exchange=exchange)
+        self.pulse_consumer = GenericConsumer(self.pulse_config, durable=True, exchange=exchange, applabel=applabel)
         self.pulse_consumer.configure(topic=topic, callback=self.receivedMessage)
 
     def start(self):

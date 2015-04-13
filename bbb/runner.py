@@ -37,6 +37,7 @@ def main():
             pulse_password=config["pulse_password"],
             exchange=config["buildbot_pulse_exchange"],
             topic=config["buildbot_pulse_topic"],
+            applabel=config["buildbot_pulse_applabel"],
             tcWorkerGroup=config["taskcluster_worker_group"],
             tcWorkerId=config["taskcluster_worker_id"],
             **kwargs
@@ -52,6 +53,7 @@ def main():
             pulse_password=config["pulse_password"],
             exchange=config["taskcluster_pulse_exchange"],
             topic=config["taskcluster_pulse_topic"],
+            applabel=config["taskcluster_pulse_applabel"],
             **kwargs
         )
     else:

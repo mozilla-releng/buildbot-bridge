@@ -11,9 +11,11 @@
 
     "taskcluster_pulse_exchange": "exchange/taskcluster-queue/v1/task-pending",
     "taskcluster_pulse_topic": "*.*.*.*.*.*.test-buildbot.#",
+    "taskcluster_pulse_applabel": "buildbot-bridge-taskcluster",
 
     "buildbot_pulse_exchange": "exchange/build",
     "buildbot_pulse_topic": "build.*.*.*",
+    "buildbot_pulse_applabel": "buildbot-bridge-buildbot",
     "taskcluster_worker_group": "buildbot-bridge",
     "taskcluster_worker_id": "buildbot-bridge",
 
