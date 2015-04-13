@@ -67,6 +67,7 @@ class BBBDb(object):
         log.debug("Updating task with brid %s to takenUntil %s", brid, takenUntil)
         self.tasks_table.update(self.tasks_table.c.buildrequestId == brid).values(takenUntil=takenUntil).execute()
 
+
 class BuildbotDb(object):
     def __init__(self, uri):
         self.db = sa.create_engine(uri)
@@ -181,12 +182,12 @@ class ServiceBase(object):
 
 class ListenerService(object):
     """A base for BBB services that run in response to events from Pulse."""
-    def __init__(self, user, password, exchange, topic, eventHandlers, *args, **kwargs):
+    def __init__(self, pulse_user, pulse_password, exchange, topic, eventHandlers, *args, **kwargs):
         super(ListenerService, self).__init__(*args, **kwargs)
 
         self.pulse_config = PulseConfiguration(
-            user=user,
-            password=password,
+            user=pulse_user,
+            password=pulse_password,
             # TODO: remove me
             ssl=False
         )
