@@ -56,3 +56,26 @@ INSERT INTO buildrequests
         self.assertEquals(bbb_state[0].createdDate, 20)
         self.assertEquals(bbb_state[0].processedDate, 25)
         self.assertEquals(bbb_state[0].takenUntil, None)
+
+    def testCancelledFromBuildbot(self):
+        self.buildbot_db.execute(sa.text("""
+INSERT INTO buildrequests
+    (id, buildsetid, buildername, submitted_at, complete)
+    VALUES (3, 0, "foo", 30, 1);
+"""))
+        self.tasks.insert().execute(
+            buildrequestId=3,
+            taskId=makeTaskId(),
+            runId=0,
+            createdDate=20,
+            processedDate=25,
+            takenUntil=None,
+        )
+
+        self.reclaimer.reclaimTasks()
+
+        # Tasks that are cancelled from Buildbot should have that reflected
+        # in TC, and be removed from our DB.
+        self.assertEquals(self.reclaimer.tc_queue.cancelTask.call_count, 1)
+        bbb_state = self.tasks.select().execute().fetchall()
+        self.assertEquals(len(bbb_state), 0)
