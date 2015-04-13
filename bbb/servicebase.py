@@ -206,7 +206,7 @@ class ListenerService(ServiceBase):
 
     def receivedMessage(self, data, msg):
         log.debug("Got %s %s", data, msg)
-        log.info("Received message on %s", data["_meta"]["routing_key"])
+        log.info("Received message on %s", msg.delivery_info["routing_key"])
 
         event = self.getEvent(data)
 
