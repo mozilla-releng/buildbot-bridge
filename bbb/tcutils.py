@@ -1,4 +1,7 @@
+from base64 import b64encode
 import json
+from uuid import uuid4
+
 from redo import retrier
 import requests
 
@@ -31,3 +34,8 @@ def createJsonArtifact(queue, taskId, runId, name, data, expires):
     else:
         log.error("couldn't upload artifact to s3")
         raise IOError("couldn't upload artifact to s3")
+
+def makeTaskId():
+    """Used in testing to generate task ids without talking to TaskCluster."""
+    return b64encode(uuid4().bytes).replace("+", "-").replace("/", "-").rstrip("=")
+
