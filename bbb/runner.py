@@ -23,6 +23,7 @@ def main():
 
     logging.basicConfig(level=logging.WARN, format="%(asctime)s - %(name)s - %(message)s")
     log.setLevel(args.loglevel)
+    log.getLogger("bbb").setLevel(args.loglevel)
 
     config = json.load(open(args.config))
 
