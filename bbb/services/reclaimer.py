@@ -47,10 +47,12 @@ class Reclaimer(ServiceBase):
                 else:
                     log.info("Build hasn't started yet, nothing to do")
                     continue
-            # BuildRequest is complete, but hasn't been reaped yet. Nothing to do,
-            # but the BBListener should come along and get rid of it soon.
+            # BuildRequest is complete, but hasn't been reaped yet. We should
+            # continue claiming this task for now, but the BBListener should
+            # come along and get rid of it soon.
             elif buildrequest.complete:
-                log.info("BuildRequest %i is done, BBListener should process it soon", t.buildrequestId)
+                log.info("BuildRequest %i is done. BuildbotListener should process it soon, reclaiming in the meantime", t.buildrequestId)
+                # TODO: RECLAIM!
                 continue
 
             # Build is running, which means it has already been claimed.

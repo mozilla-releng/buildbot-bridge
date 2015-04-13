@@ -73,7 +73,7 @@ class BuildbotDb(object):
         self.db = sa.create_engine(uri)
 
     def getBuildRequest(self, brid):
-        return self.db.execute(sa.text("select * from buildrequests where id=:brid", brid=brid)).fetchone()
+        return self.db.execute(sa.text("select * from buildrequests where id=:brid"), brid=brid).fetchone()
 
     def getBuildRequests(self, buildnumber):
         return self.db.execute(
@@ -82,7 +82,7 @@ class BuildbotDb(object):
         ).fetchall()
 
     def getBuilds(self, brid):
-        return self.db.execute(sa.text("select * from builds where brid=:brid", brid=brid)).fetchall()
+        return self.db.execute(sa.text("select * from builds where brid=:brid"), brid=brid).fetchall()
 
     def createSourceStamp(self, sourcestamp={}):
         q = sa.text("""INSERT INTO sourcestamps
