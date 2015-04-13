@@ -119,7 +119,7 @@ class BuildbotDb(object):
         # Create a sourcestamp if necessary
         sourcestamp = payload.get('sourcestamp', {})
 
-        sourcestampid = self.createSourceStamp(self.db, sourcestamp)
+        sourcestampid = self.createSourceStamp(sourcestamp)
 
         # Create a buildset
         q = sa.text("""INSERT INTO buildsets
@@ -145,7 +145,7 @@ class BuildbotDb(object):
         properties = payload.get('properties', {})
         # Always create a property for the taskId
         properties['taskId'] = taskId
-        self.createBuildSetProperties(self.db, buildsetid, properties)
+        self.createBuildSetProperties(buildsetid, properties)
 
         # Create the buildrequest
         buildername = payload['buildername']
