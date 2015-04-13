@@ -24,6 +24,7 @@ class TestBuildbotListener(unittest.TestCase):
             pulse_password="fake",
             exchange="fake",
             topic="fake",
+            applabel="fake",
             tcWorkerGroup="workwork",
             tcWorkerId="workwork",
         )
