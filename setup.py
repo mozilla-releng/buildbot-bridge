@@ -7,9 +7,7 @@ setup(
     author="Mozilla Release Engineering",
     py_modules=["bbb"],
     scripts=[
-        "scripts/bblistener.py",
-        "scripts/tclistener.py",
-        "scripts/reclaimer.py",
+        "scripts/bbb.py",
     ],
     install_requires=[
         # Because taskcluster hard pins this version...

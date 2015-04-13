@@ -3,17 +3,19 @@
         "clientId": "foo",
         "accessToken": "foo"
     },
-    "taskcluster_worker_group": "buildbot-bridge",
-    "taskcluster_worker_id": "buildbot-bridge",
     "buildbot_scheduler_db": "mysql://foo:bar@blah/crap",
     "bbb_db": "sqlite:///bbb.db",
 
-    "pulse_host": "pulse.mozilla.org",
     "pulse_user": "foo",
     "pulse_password": "foo",
 
     "taskcluster_pulse_exchange": "exchange/taskcluster-queue/v1/task-pending",
     "taskcluster_pulse_topic": "*.*.*.*.*.*.test-buildbot.#",
+
     "buildbot_pulse_exchange": "exchange/build",
-    "build_finished_pulse_topic": "build.*.*.*"
+    "buildbot_pulse_topic": "build.*.*.*",
+    "taskcluster_worker_group": "buildbot-bridge",
+    "taskcluster_worker_id": "buildbot-bridge",
+
+    "reclaim_interval": 60
 }
