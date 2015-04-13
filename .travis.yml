@@ -3,6 +3,7 @@ python:
     - "2.7"
 
 install:
+    - sudo apt-get upgrade sqlite3
     - python setup.py install
     - pip install pyflakes nose
 
