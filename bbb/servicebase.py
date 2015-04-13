@@ -180,7 +180,7 @@ class ServiceBase(object):
         raise NotImplementedError()
 
 
-class ListenerService(object):
+class ListenerService(ServiceBase):
     """A base for BBB services that run in response to events from Pulse."""
     def __init__(self, pulse_user, pulse_password, exchange, topic, eventHandlers, *args, **kwargs):
         super(ListenerService, self).__init__(*args, **kwargs)
