@@ -4,7 +4,7 @@ python:
 
 install:
     - sudo apt-get update
-    - sudo apt-get upgrade sqlite3
+    - sudo apt-get install sqlite3
     - python setup.py install
     - pip install pyflakes nose
 
