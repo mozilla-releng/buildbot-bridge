@@ -2,13 +2,15 @@ from setuptools import setup
 
 setup(
     name="bbb",
-    version="0.1",
+    version="0.2",
     description="Buildbot <-> Taskcluster Bridge",
     author="Mozilla Release Engineering",
-    py_modules=["bbb"],
-    scripts=[
-        "scripts/bbb.py",
-    ],
+    packages=["bbb", "bbb.services"],
+    entry_points={
+        "console_scripts": [
+            "buildbot-bridge = bbb.runner:main",
+        ],
+    },
     install_requires=[
         # Because taskcluster hard pins this version...
         "requests==2.4.3",
