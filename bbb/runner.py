@@ -43,7 +43,7 @@ def main():
         )
     elif args.service[0] == "reclaimer":
         service = Reclaimer(
-            interval=config["reclaim_interval"]
+            interval=config["reclaim_interval"],
             **kwargs
         )
     elif args.service[0] == "tclistener":
