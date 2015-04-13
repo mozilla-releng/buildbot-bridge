@@ -57,3 +57,31 @@ class TestTCListener(unittest.TestCase):
         self.assertEquals(bbb_state[0].createdDate, 50)
         self.assertEquals(bbb_state[0].processedDate, processedDate.timestamp)
         self.assertEquals(bbb_state[0].takenUntil, None)
+
+    def testHandlePendingUpdateRunId(self):
+        taskId = makeTaskId()
+        self.tasks.insert().execute(
+            buildRequestId=1,
+            taskId=taskId,
+            runId=0,
+            createdDate=23,
+            processedDate=34,
+            takenUntil=None
+        )
+        data = {"status": {
+            "taskId": taskId,
+            "runs": [
+                {"runId": 0},
+                {"runId": 1},
+            ],
+        }}
+
+        self.tclistener.handlePending(data, {})
+        bbb_state = self.tasks.select().execute().fetchall()
+        self.assertEquals(len(bbb_state), 1)
+        self.assertEquals(bbb_state[0].buildrequestId, 1)
+        self.assertEquals(bbb_state[0].taskId, taskId)
+        self.assertEquals(bbb_state[0].runId, 1)
+        self.assertEquals(bbb_state[0].createdDate, 23)
+        self.assertEquals(bbb_state[0].processedDate, 34)
+        self.assertEquals(bbb_state[0].takenUntil, None)
