@@ -112,3 +112,38 @@ INSERT INTO builds
         bbb_state = self.tasks.select().execute().fetchall()
         self.assertEquals(len(bbb_state), 1)
         self.assertEquals(bbb_state[0].takenUntil, 100)
+
+    def testHandleStartedMultipleBuildRequests(self):
+        self.buildbot_db.execute(sa.text("""
+INSERT INTO buildrequests
+    (id, buildsetid, buildername, submitted_at)
+    VALUES (2, 0, "foo", 20), (3, 0, "foo", 30);"""))
+        self.buildbot_db.execute(sa.text("""
+INSERT INTO builds
+    (id, number, brid, start_time)
+    VALUES (0, 3, 2, 40), (1, 3, 3, 40);"""))
+        self.tasks.insert().execute(
+            buildrequestId=2,
+            taskId="HbrXRXnEQbG9vh0sMnEjcQ",
+            runId=0,
+            createdDate=20,
+            processedDate=35,
+            takenUntil=None
+        )
+        self.tasks.insert().execute(
+            buildrequestId=3,
+            taskId="U2h2XEZcRnCZaULOymd2MQ",
+            runId=0,
+            createdDate=30,
+            processedDate=35,
+            takenUntil=None
+        )
+        data = {"payload": {"build": {"number": 3}}}
+        self.bblistener.tc_queue.claimTask.return_value = {"takenUntil": 80}
+        self.bblistener.handleStarted(data, {})
+
+        self.assertEquals(self.bblistener.tc_queue.claimTask.call_count, 2)
+        bbb_state = self.tasks.select().execute().fetchall()
+        self.assertEquals(len(bbb_state), 2)
+        self.assertEquals(bbb_state[0].takenUntil, 80)
+        self.assertEquals(bbb_state[1].takenUntil, 80)
