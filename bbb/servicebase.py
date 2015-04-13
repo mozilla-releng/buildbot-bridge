@@ -201,7 +201,7 @@ class ListenerService(ServiceBase):
         log.info("Listening for Pulse messages")
         log.debug("Exchange is %s", self.exchange)
         log.debug("Topic is %s", self.topic)
-        #self.pulse_consumer.listen()
+        self.pulse_consumer.listen()
 
     def receivedMessage(self, data, msg):
         log.info("Received message on %s", data["_meta"]["routing_key"])
