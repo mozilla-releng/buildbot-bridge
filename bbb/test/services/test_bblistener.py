@@ -14,7 +14,7 @@ class TestBuildbotListener(unittest.TestCase):
         self.bblistener = BuildbotListener(
             bbb_db="sqlite:///:memory:",
             buildbot_db="sqlite:///:memory:",
-            tc_credentials={
+            tc_config={
                 "credentials": {
                     "clientId": "fake",
                     "accessToken": "fake",
@@ -25,8 +25,8 @@ class TestBuildbotListener(unittest.TestCase):
             exchange="fake",
             topic="fake",
             applabel="fake",
-            tcWorkerGroup="workwork",
-            tcWorkerId="workwork",
+            tc_worker_group="workwork",
+            tc_worker_id="workwork",
         )
         makeSchedulerDb(self.bblistener.buildbot_db.db)
         # Replace the TaskCluster Queue object with a Mock because we never

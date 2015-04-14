@@ -13,7 +13,7 @@ class TestTCListener(unittest.TestCase):
         self.tclistener = TCListener(
             bbb_db="sqlite:///:memory:",
             buildbot_db="sqlite:///:memory:",
-            tc_credentials={
+            tc_config={
                 "credentials": {
                     "clientId": "fake",
                     "accessToken": "fake",
@@ -35,15 +35,15 @@ class TestTCListener(unittest.TestCase):
 
     @patch("arrow.now")
     def testHandlePendingNewTask(self, fake_now):
-        taskId = makeTaskId()
+        taskid = makeTaskId()
         data = {"status": {
-            "taskId": taskId,
+            "taskId": taskid,
             "runs": [
                 {"runId": 0},
             ],
         }}
 
-        processedDate = fake_now.return_value = Arrow(2015, 4, 1)
+        processed_date = fake_now.return_value = Arrow(2015, 4, 1)
         self.tclistener.tc_queue.task.return_value = {"created": 50}
         self.buildbot_db.injectTask.return_value = 1
         self.tclistener.handlePending(data, {})
@@ -53,24 +53,24 @@ class TestTCListener(unittest.TestCase):
         bbb_state = self.tasks.select().execute().fetchall()
         self.assertEquals(len(bbb_state), 1)
         self.assertEquals(bbb_state[0].buildrequestId, 1)
-        self.assertEquals(bbb_state[0].taskId, taskId)
+        self.assertEquals(bbb_state[0].taskId, taskid)
         self.assertEquals(bbb_state[0].runId, 0)
         self.assertEquals(bbb_state[0].createdDate, 50)
-        self.assertEquals(bbb_state[0].processedDate, processedDate.timestamp)
+        self.assertEquals(bbb_state[0].processedDate, processed_date.timestamp)
         self.assertEquals(bbb_state[0].takenUntil, None)
 
     def testHandlePendingUpdateRunId(self):
-        taskId = makeTaskId()
+        taskid = makeTaskId()
         self.tasks.insert().execute(
             buildRequestId=1,
-            taskId=taskId,
+            taskId=taskid,
             runId=0,
             createdDate=23,
             processedDate=34,
             takenUntil=None
         )
         data = {"status": {
-            "taskId": taskId,
+            "taskId": taskid,
             "runs": [
                 {"runId": 0},
                 {"runId": 1},
@@ -81,7 +81,7 @@ class TestTCListener(unittest.TestCase):
         bbb_state = self.tasks.select().execute().fetchall()
         self.assertEquals(len(bbb_state), 1)
         self.assertEquals(bbb_state[0].buildrequestId, 1)
-        self.assertEquals(bbb_state[0].taskId, taskId)
+        self.assertEquals(bbb_state[0].taskId, taskid)
         self.assertEquals(bbb_state[0].runId, 1)
         self.assertEquals(bbb_state[0].createdDate, 23)
         self.assertEquals(bbb_state[0].processedDate, 34)
