@@ -40,7 +40,7 @@ class Reflector(ServiceBase):
     def reflectTasks(self):
         # TODO: Probably need some error handling here to make sure all tasks
         # are processed even if one hit an exception.
-        for t in self.bbb_db.getAllTasks():
+        for t in self.bbb_db.tasks:
             log.info("Processing task: %s", t.taskId)
             buildrequest = self.buildbot_db.getBuildRequest(t.buildrequestId)
             builds = self.buildbot_db.getBuilds(t.buildrequestId)

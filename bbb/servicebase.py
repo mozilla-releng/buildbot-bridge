@@ -27,6 +27,13 @@ class BBBDb(object):
         )
         metadata.create_all(self.db)
 
+    @property
+    def tasks(self):
+        log.debug("Fetching all tasks")
+        tasks = self.tasks_table.select().execute().fetchall()
+        log.debug("Tasks: %s", tasks)
+        return tasks
+
     def getTask(self, taskid):
         log.info("Fetching task %s", taskid)
         task = self.tasks_table.select(self.tasks_table.c.taskId == taskid).execute().fetchone()
@@ -38,12 +45,6 @@ class BBBDb(object):
         if not task:
             raise ValueError("Couldn't find task for brid %i", brid)
         return task
-
-    def getAllTasks(self):
-        log.debug("Fetching all tasks")
-        tasks = self.tasks_table.select().execute().fetchall()
-        log.debug("Tasks: %s", tasks)
-        return tasks
 
     def createTask(self, taskid, runid, brid, created_date):
         log.info("Creating task %s", taskid)
