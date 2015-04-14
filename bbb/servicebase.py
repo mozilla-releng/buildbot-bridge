@@ -26,9 +26,9 @@ class BBBDb(object):
         )
         metadata.create_all(self.db)
 
-    def getTask(self, taskId):
-        log.info("Fetching task %s", taskId)
-        task = self.tasks_table.select(self.tasks_table.c.taskId == taskId).execute().fetchone()
+    def getTask(self, task_id):
+        log.info("Fetching task %s", task_id)
+        task = self.tasks_table.select(self.tasks_table.c.taskId == task_id).execute().fetchone()
         log.debug("Task: %s", task)
         return task
 
@@ -44,14 +44,14 @@ class BBBDb(object):
         log.debug("Tasks: %s", tasks)
         return tasks
 
-    def createTask(self, taskId, runId, brid, createdDate):
-        log.info("Creating task %s", taskId)
-        log.debug("Task info: runId: %s, brid: %s, created: %s", runId, brid, createdDate)
+    def createTask(self, taskid, runid, brid, created_date):
+        log.info("Creating task %s", taskid)
+        log.debug("Task info: runId: %s, brid: %s, created: %s", runid, brid, created_date)
         self.tasks_table.insert().values(
-            taskId=taskId,
-            runId=runId,
+            taskId=taskid,
+            runId=runid,
             buildrequestId=brid,
-            createdDate=createdDate,
+            createdDate=created_date,
             processedDate=arrow.now().timestamp,
         ).execute()
 
@@ -59,13 +59,13 @@ class BBBDb(object):
         log.info("Deleting task with brid %s", brid)
         self.tasks_table.delete(self.tasks_table.c.buildrequestId == brid).execute()
 
-    def updateRunId(self, brid, runId):
-        log.info("Updating task with brid %s to runId %s", brid, runId)
-        self.tasks_table.update(self.tasks_table.c.buildrequestId == brid).values(runId=runId).execute()
+    def updateRunId(self, brid, runid):
+        log.info("Updating task with brid %s to runId %s", brid, runid)
+        self.tasks_table.update(self.tasks_table.c.buildrequestId == brid).values(runId=runid).execute()
 
-    def updateTakenUntil(self, brid, takenUntil):
-        log.debug("Updating task with brid %s to takenUntil %s", brid, takenUntil)
-        self.tasks_table.update(self.tasks_table.c.buildrequestId == brid).values(takenUntil=takenUntil).execute()
+    def updateTakenUntil(self, brid, taken_until):
+        log.debug("Updating task with brid %s to takenUntil %s", brid, taken_until)
+        self.tasks_table.update(self.tasks_table.c.buildrequestId == brid).values(takenUntil=taken_until).execute()
 
 
 class BuildbotDb(object):
@@ -182,7 +182,7 @@ class ServiceBase(object):
 
 class ListenerService(ServiceBase):
     """A base for BBB services that run in response to events from Pulse."""
-    def __init__(self, pulse_user, pulse_password, exchange, topic, applabel, eventHandlers, *args, **kwargs):
+    def __init__(self, pulse_user, pulse_password, exchange, topic, applabel, event_handlers, *args, **kwargs):
         super(ListenerService, self).__init__(*args, **kwargs)
 
         self.pulse_config = PulseConfiguration(
@@ -194,7 +194,7 @@ class ListenerService(ServiceBase):
         self.exchange = exchange
         self.topic = topic
         self.applabel = applabel
-        self.eventHandlers = eventHandlers
+        self.event_handlers = event_handlers
         self.pulse_consumer = GenericConsumer(self.pulse_config, durable=True, exchange=exchange, applabel=applabel)
         self.pulse_consumer.configure(topic=topic, callback=self.receivedMessage)
 
@@ -211,9 +211,9 @@ class ListenerService(ServiceBase):
         event = self.getEvent(data, msg)
 
         try:
-            if self.eventHandlers.get(event):
+            if self.event_handlers.get(event):
                 log.info("Handling event: %s", event)
-                self.eventHandlers[event](data, msg)
+                self.event_handlers[event](data, msg)
             else:
                 log.debug("No event handler for: %s", event)
         finally:

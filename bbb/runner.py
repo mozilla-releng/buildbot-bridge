@@ -39,8 +39,8 @@ def main():
             exchange=config["buildbot_pulse_exchange"],
             topic=config["buildbot_pulse_topic"],
             applabel=config["buildbot_pulse_applabel"],
-            tcWorkerGroup=config["taskcluster_worker_group"],
-            tcWorkerId=config["taskcluster_worker_id"],
+            tc_worker_group=config["taskcluster_worker_group"],
+            tc_worker_id=config["taskcluster_worker_id"],
             **kwargs
         )
     elif args.service[0] == "reclaimer":

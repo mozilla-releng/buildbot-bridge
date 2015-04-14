@@ -9,20 +9,20 @@ import logging
 log = logging.getLogger(__name__)
 
 
-def createJsonArtifact(queue, taskId, runId, name, data, expires):
+def createJsonArtifact(queue, taskid, runid, name, data, expires):
     data = json.dumps(data)
-    resp = queue.createArtifact(taskId, runId, name, {
+    resp = queue.createArtifact(taskid, runid, name, {
         "storageType": "s3",
         "contentType": "application/json",
         "expires": expires,
     })
     log.debug("Got %s", resp)
     assert resp["storageType"] == "s3"
-    putUrl = resp["putUrl"]
-    log.debug("Uploading to %s", putUrl)
+    put_url = resp["putUrl"]
+    log.debug("Uploading to %s", put_url)
     for _ in retrier():
         try:
-            resp = requests.put(putUrl, data=data, headers={
+            resp = requests.put(put_url, data=data, headers={
                 "Content-Type": "application/json",
                 "Content-Length": len(data),
             })
