@@ -8,20 +8,38 @@ from ..timeutils import parseDateString
 import logging
 log = logging.getLogger(__name__)
 
-class Reclaimer(ServiceBase):
-    # TODO: This probably needs a better name since it deals with cancellations
-    # as well as reclaims. Or maybe we don't care.
+class Reflector(ServiceBase):
+    """Reflects Task state in Taskcluster based on the state of the
+    Buildbot and BBB databases. Each task may be in one of the following
+    states:
+     * If takenUntil is unset and the BuildRequest is complete the task is
+     considered cancelled. This will be forwarded to Taskcluster and the
+     task will be removed from our database.
+     * If takenUntil is unset and the BuildRequest is incomplete the task
+     is either still pending or just started. There is nothing for us to
+     do in this case.
+     * If takenUntil is set and the BuildRequest is not complete, there is
+     a Buildbot Build running for this Task. We need to reclaim the task
+     to avoid Taskcluster expiring our claim.
+     * If takenUntil is set and the BuildRequest is complete, the Buildbot
+     Build has already completed and we're waiting for the BBListener to
+     update Taskcluster with the job status. We currently do nothing for
+     this, but we may want to reclaim in case the BBListener takes a long
+     time to process the completed Build.
+    """
     def __init__(self, interval, *args, **kwargs):
-        super(Reclaimer, self).__init__(*args, **kwargs)
+        super(Reflector, self).__init__(*args, **kwargs)
         self.interval = interval
 
     def start(self):
-        log.info("Starting reclaimer")
+        log.info("Starting reflector")
         while True:
-            self.reclaimTasks()
+            self.reflectTasks()
             time.sleep(self.interval)
 
-    def reclaimTasks(self):
+    def reflectTasks(self):
+        # TODO: Probably need some error handling here to make sure all tasks
+        # are processed even if one hit an exception.
         for t in self.bbb_db.getAllTasks():
             log.info("Processing task: %s", t.taskId)
             buildrequest = self.buildbot_db.getBuildRequest(t.buildrequestId)
@@ -51,7 +69,7 @@ class Reclaimer(ServiceBase):
             # continue claiming this task for now, but the BBListener should
             # come along and get rid of it soon.
             elif buildrequest.complete:
-                log.info("BuildRequest %i is done. BuildbotListener should process it soon, reclaiming in the meantime", t.buildrequestId)
+                log.info("BuildRequest %i is done. BBListener should process it soon, reclaiming in the meantime", t.buildrequestId)
                 # TODO: RECLAIM!
                 continue
 

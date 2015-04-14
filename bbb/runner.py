@@ -1,7 +1,7 @@
 import json
 
 from .services.bblistener import BuildbotListener
-from .services.reclaimer import Reclaimer
+from .services.reflector import Reflector
 from .services.tclistener import TCListener
 
 import logging
@@ -17,12 +17,11 @@ def main():
     parser.add_argument("-v", "--verbose", dest="loglevel", action="store_const", const=logging.DEBUG)
     parser.add_argument("-q", "--quiet", dest="loglevel", action="store_const", const=logging.WARN)
     parser.add_argument("-c", "--config", dest="config", required=True)
-    parser.add_argument("service", nargs=1, choices=["bblistener", "reclaimer", "tclistener"])
+    parser.add_argument("service", nargs=1, choices=["bblistener", "reflector", "tclistener"])
 
     args = parser.parse_args()
 
-    logging.basicConfig(level=logging.WARN, format="%(asctime)s - %(name)s - %(message)s")
-    log.setLevel(args.loglevel)
+    logging.basicConfig(level=args.loglevel, format="%(asctime)s - %(name)s - %(message)s")
     logging.getLogger("bbb").setLevel(args.loglevel)
 
     config = json.load(open(args.config))
@@ -43,8 +42,8 @@ def main():
             tc_worker_id=config["taskcluster_worker_id"],
             **kwargs
         )
-    elif args.service[0] == "reclaimer":
-        service = Reclaimer(
+    elif args.service[0] == "reflector":
+        service = Reflector(
             interval=config["reclaim_interval"],
             **kwargs
         )
@@ -69,3 +68,4 @@ def main():
             raise
         except:
             log.exception("Caught exception:")
+            # TODO: Sleep here? The Reflector reloads rapidly if it hits an Exception

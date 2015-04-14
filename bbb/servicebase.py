@@ -13,6 +13,7 @@ log = logging.getLogger(__name__)
 
 
 class BBBDb(object):
+    """Wrapper object for creation of and access to Buildbot Bridge database."""
     def __init__(self, uri):
         self.db = sa.create_engine(uri)
         metadata = sa.MetaData(self.db)
@@ -26,9 +27,9 @@ class BBBDb(object):
         )
         metadata.create_all(self.db)
 
-    def getTask(self, task_id):
-        log.info("Fetching task %s", task_id)
-        task = self.tasks_table.select(self.tasks_table.c.taskId == task_id).execute().fetchone()
+    def getTask(self, taskid):
+        log.info("Fetching task %s", taskid)
+        task = self.tasks_table.select(self.tasks_table.c.taskId == taskid).execute().fetchone()
         log.debug("Task: %s", task)
         return task
 
@@ -69,6 +70,7 @@ class BBBDb(object):
 
 
 class BuildbotDb(object):
+    """Wrapper object for access to preexisting Buildbot scheduler database."""
     def __init__(self, uri):
         self.db = sa.create_engine(uri)
 

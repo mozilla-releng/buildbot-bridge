@@ -10,6 +10,9 @@ log = logging.getLogger(__name__)
 
 
 def createJsonArtifact(queue, taskid, runid, name, data, expires):
+    """Creates a Taskcluster artifact for the given taskid and runid, and
+    uploads the artifact contents to location provided."""
+
     data = json.dumps(data)
     resp = queue.createArtifact(taskid, runid, name, {
         "storageType": "s3",
@@ -17,6 +20,8 @@ def createJsonArtifact(queue, taskid, runid, name, data, expires):
         "expires": expires,
     })
     log.debug("Got %s", resp)
+    if resp.get("storageType") != "s3":
+        raise ValueError("Can't upload artifact for task %s with runid %s because storageType is wrong" % (taskid, runid))
     assert resp["storageType"] == "s3"
     put_url = resp["putUrl"]
     log.debug("Uploading to %s", put_url)

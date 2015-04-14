@@ -11,6 +11,11 @@ log = logging.getLogger(__name__)
 SUCCESS, WARNINGS, FAILURE, SKIPPED, EXCEPTION, RETRY, CANCELLED = range(7)
 
 class BuildbotListener(ListenerService):
+    """Listens for messages from Buildbot and responds appropriately.
+    Currently handles the following types of events:
+     * Build started (build.$builder.started)
+     * Build finished (build.$builder.log_uploaded)
+    """
     def __init__(self, tc_worker_group, tc_worker_id, *args, **kwargs):
         self.tc_worker_group = tc_worker_group
         self.tc_worker_id = tc_worker_id
@@ -25,6 +30,10 @@ class BuildbotListener(ListenerService):
         return msg.delivery_info["routing_key"].split(".")[-1]
 
     def handleStarted(self, data, msg):
+        """When a Build starts in Buildbot we claim the task in
+        Taskcluster, which will move it into the "running" state there. We
+        also update the BBB database with the claim time which triggers the
+        Reflector to start reclaiming it periodically."""
         # TODO: Error handling?
         buildnumber = data["payload"]["build"]["number"]
         for brid in self.buildbot_db.getBuildRequests(buildnumber):
@@ -39,6 +48,13 @@ class BuildbotListener(ListenerService):
             self.bbb_db.updateTakenUntil(brid, claim["takenUntil"])
 
     def handleFinished(self, data, msg):
+        """When a Build finishes in Buildbot we pass along the final state of
+        it to the Task(s) associated with it in Taskcluster.
+
+        It's important to note that we track the "build.foo.log_uploaded" event
+        instead of "build.foo.finished". This is because only the former
+        contains all of the BuildRequest ids that the Build satisfied.
+        """
         # Get the request_ids from the properties
         try:
             properties = dict((key, (value, source)) for (key, value, source) in data["payload"]["build"]["properties"])
