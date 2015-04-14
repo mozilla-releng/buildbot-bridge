@@ -210,14 +210,16 @@ class ListenerService(ServiceBase):
 
         event = self.getEvent(data, msg)
 
-        if self.eventHandlers.get(event):
-            log.info("Handling event: %s", event)
-            self.eventHandlers[event](data, msg)
-        else:
-            log.debug("No event handler for: %s", event)
-        # TODO: Should we ack here even if there was an exception? Retrying
-        # the same message over and over again may not work.
-        msg.ack()
+        try:
+            if self.eventHandlers.get(event):
+                log.info("Handling event: %s", event)
+                self.eventHandlers[event](data, msg)
+            else:
+                log.debug("No event handler for: %s", event)
+        finally:
+            # TODO: Should we ack here even if there was an exception? Retrying
+            # the same message over and over again may not work.
+            msg.ack()
 
     def getEvent(self, *args, **kwargs):
         raise NotImplementedError()
