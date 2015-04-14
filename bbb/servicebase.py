@@ -171,10 +171,10 @@ class BuildbotDb(object):
 class ServiceBase(object):
     """A base for all BBB services that manages access to the buildbot db,
        bbb db, and taskcluster."""
-    def __init__(self, bbb_db, buildbot_db, tc_credentials):
+    def __init__(self, bbb_db, buildbot_db, tc_config):
         self.bbb_db = BBBDb(bbb_db)
         self.buildbot_db = BuildbotDb(buildbot_db)
-        self.tc_queue = Queue(tc_credentials)
+        self.tc_queue = Queue(tc_config)
 
     def start(self):
         raise NotImplementedError()

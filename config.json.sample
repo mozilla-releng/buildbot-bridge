@@ -1,7 +1,9 @@
 {
-    "taskcluster_credentials": {
-        "clientId": "foo",
-        "accessToken": "foo"
+    "taskcluster_queue_config": {
+        "credentials": {
+            "clientId": "foo",
+            "accessToken": "foo"
+        }
     },
     "buildbot_scheduler_db": "mysql://foo:bar@blah/crap",
     "bbb_db": "sqlite:///bbb.db",

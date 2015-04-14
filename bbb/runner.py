@@ -30,7 +30,7 @@ def main():
     kwargs = {
         "bbb_db": config["bbb_db"],
         "buildbot_db": config["buildbot_scheduler_db"],
-        "tc_credentials": config["taskcluster_credentials"]
+        "tc_config": config["taskcluster_queue_config"],
     }
     if args.service[0] == "bblistener":
         service = BuildbotListener(
