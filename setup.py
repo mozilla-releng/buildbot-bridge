@@ -5,7 +5,7 @@ setup(
     version="0.2",
     description="Buildbot <-> Taskcluster Bridge",
     author="Mozilla Release Engineering",
-    packages=["bbb", "bbb.services"],
+    packages=["bbb"],
     entry_points={
         "console_scripts": [
             "buildbot-bridge = bbb.runner:main",

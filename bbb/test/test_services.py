@@ -1,12 +1,13 @@
 from mock import Mock, patch
 import unittest
 
+from arrow import Arrow
 import sqlalchemy as sa
 
-from ..dbutils import makeSchedulerDb
-from ...services.bblistener import BuildbotListener, SUCCESS, WARNINGS, \
-    FAILURE, EXCEPTION, RETRY, CANCELLED
-from ...tcutils import makeTaskId
+from .dbutils import makeSchedulerDb
+from ..services import BuildbotListener, Reflector, TCListener, SUCCESS, \
+    WARNINGS, FAILURE, EXCEPTION, RETRY, CANCELLED
+from ..tcutils import makeTaskId
 
 
 class TestBuildbotListener(unittest.TestCase):
@@ -179,3 +180,180 @@ INSERT INTO builds
         self.assertEquals(self.bblistener.tc_queue.cancelTask.call_count, 1)
         # Build and Task are done - should be deleted from our db.
         self.assertEquals(self.tasks.count().execute().fetchone()[0], 0)
+
+
+class TestReflector(unittest.TestCase):
+    def setUp(self):
+        self.reflector = Reflector(
+            bbb_db="sqlite:///:memory:",
+            buildbot_db="sqlite:///:memory:",
+            tc_config={
+                "credentials": {
+                    "clientId": "fake",
+                    "accessToken": "fake",
+                }
+            },
+            interval=5,
+        )
+        makeSchedulerDb(self.reflector.buildbot_db.db)
+        # Replace the TaskCluster Queue object with a Mock because we never
+        # want to actually talk to TC, just check if the calls that would've
+        # been made are correct
+        self.reflector.tc_queue = Mock()
+        self.tasks = self.reflector.bbb_db.tasks_table
+        self.buildbot_db = self.reflector.buildbot_db.db
+
+    def testReclaimRunningTask(self):
+        taskid = makeTaskId()
+        self.buildbot_db.execute(sa.text("""
+INSERT INTO buildrequests
+    (id, buildsetid, buildername, submitted_at)
+    VALUES (2, 0, "foo", 15);
+"""))
+        self.tasks.insert().execute(
+            buildrequestId=2,
+            taskId=taskid,
+            runId=0,
+            createdDate=12,
+            processedDate=17,
+            takenUntil=200,
+        )
+
+        self.reflector.tc_queue.reclaimTask.return_value = {"takenUntil": 300}
+        self.reflector.reflectTasks()
+
+        self.assertEquals(self.reflector.tc_queue.reclaimTask.call_count, 1)
+        bbb_state = self.tasks.select().execute().fetchall()
+        self.assertEquals(len(bbb_state), 1)
+        self.assertEquals(bbb_state[0].takenUntil, 300)
+
+    def testPendingTask(self):
+        taskid = makeTaskId()
+        self.buildbot_db.execute(sa.text("""
+INSERT INTO buildrequests
+    (id, buildsetid, buildername, submitted_at)
+    VALUES (0, 0, "foo", 20);
+"""))
+        self.tasks.insert().execute(
+            buildrequestId=0,
+            taskId=taskid,
+            runId=0,
+            createdDate=20,
+            processedDate=25,
+            takenUntil=None,
+        )
+
+        self.reflector.reflectTasks()
+
+        # Pending tasks shouldn't have any state changed by the reflector
+        bbb_state = self.tasks.select().execute().fetchall()
+        self.assertEquals(len(bbb_state), 1)
+        self.assertEquals(bbb_state[0].buildrequestId, 0)
+        self.assertEquals(bbb_state[0].taskId, taskid)
+        self.assertEquals(bbb_state[0].runId, 0)
+        self.assertEquals(bbb_state[0].createdDate, 20)
+        self.assertEquals(bbb_state[0].processedDate, 25)
+        self.assertEquals(bbb_state[0].takenUntil, None)
+
+    def testCancelledFromBuildbot(self):
+        self.buildbot_db.execute(sa.text("""
+INSERT INTO buildrequests
+    (id, buildsetid, buildername, submitted_at, complete)
+    VALUES (3, 0, "foo", 30, 1);
+"""))
+        self.tasks.insert().execute(
+            buildrequestId=3,
+            taskId=makeTaskId(),
+            runId=0,
+            createdDate=20,
+            processedDate=25,
+            takenUntil=None,
+        )
+
+        self.reflector.reflectTasks()
+
+        # Tasks that are cancelled from Buildbot should have that reflected
+        # in TC, and be removed from our DB.
+        self.assertEquals(self.reflector.tc_queue.cancelTask.call_count, 1)
+        bbb_state = self.tasks.select().execute().fetchall()
+        self.assertEquals(len(bbb_state), 0)
+
+
+class TestTCListener(unittest.TestCase):
+    def setUp(self):
+        self.tclistener = TCListener(
+            bbb_db="sqlite:///:memory:",
+            buildbot_db="sqlite:///:memory:",
+            tc_config={
+                "credentials": {
+                    "clientId": "fake",
+                    "accessToken": "fake",
+                }
+            },
+            pulse_user="fake",
+            pulse_password="fake",
+            exchange="fake",
+            topic="fake",
+            applabel="fake",
+        )
+        makeSchedulerDb(self.tclistener.buildbot_db.db)
+        # Replace the TaskCluster Queue object with a Mock because we never
+        # want to actually talk to TC, just check if the calls that would've
+        # been made are correct
+        self.tclistener.tc_queue = Mock()
+        self.tasks = self.tclistener.bbb_db.tasks_table
+        self.buildbot_db = self.tclistener.buildbot_db = Mock()
+
+    @patch("arrow.now")
+    def testHandlePendingNewTask(self, fake_now):
+        taskid = makeTaskId()
+        data = {"status": {
+            "taskId": taskid,
+            "runs": [
+                {"runId": 0},
+            ],
+        }}
+
+        processed_date = fake_now.return_value = Arrow(2015, 4, 1)
+        self.tclistener.tc_queue.task.return_value = {"created": 50}
+        self.buildbot_db.injectTask.return_value = 1
+        self.tclistener.handlePending(data, {})
+
+        self.assertEquals(self.tclistener.tc_queue.task.call_count, 1)
+        self.assertEquals(self.buildbot_db.injectTask.call_count, 1)
+        bbb_state = self.tasks.select().execute().fetchall()
+        self.assertEquals(len(bbb_state), 1)
+        self.assertEquals(bbb_state[0].buildrequestId, 1)
+        self.assertEquals(bbb_state[0].taskId, taskid)
+        self.assertEquals(bbb_state[0].runId, 0)
+        self.assertEquals(bbb_state[0].createdDate, 50)
+        self.assertEquals(bbb_state[0].processedDate, processed_date.timestamp)
+        self.assertEquals(bbb_state[0].takenUntil, None)
+
+    def testHandlePendingUpdateRunId(self):
+        taskid = makeTaskId()
+        self.tasks.insert().execute(
+            buildRequestId=1,
+            taskId=taskid,
+            runId=0,
+            createdDate=23,
+            processedDate=34,
+            takenUntil=None
+        )
+        data = {"status": {
+            "taskId": taskid,
+            "runs": [
+                {"runId": 0},
+                {"runId": 1},
+            ],
+        }}
+
+        self.tclistener.handlePending(data, {})
+        bbb_state = self.tasks.select().execute().fetchall()
+        self.assertEquals(len(bbb_state), 1)
+        self.assertEquals(bbb_state[0].buildrequestId, 1)
+        self.assertEquals(bbb_state[0].taskId, taskid)
+        self.assertEquals(bbb_state[0].runId, 1)
+        self.assertEquals(bbb_state[0].createdDate, 23)
+        self.assertEquals(bbb_state[0].processedDate, 34)
+        self.assertEquals(bbb_state[0].takenUntil, None)
