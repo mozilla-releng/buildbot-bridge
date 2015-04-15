@@ -219,7 +219,7 @@ class ListenerService(ServiceBase):
             )
             c = connection.Consumer(
                 queues=[q],
-                callbacks=event.callback
+                callbacks=[event.callback]
             )
             c.consume()
             consumers.append(c)
