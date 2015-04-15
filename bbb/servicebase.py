@@ -198,8 +198,6 @@ class ListenerService(ServiceBase):
 
     def start(self):
         log.info("Listening for Pulse messages")
-        log.debug("Exchange is %s", self.exchange)
-        log.debug("Topic is %s", self.topic)
         connection = Connection(
             hostname=self.pulse_host,
             userid=self.pulse_user,
@@ -209,6 +207,7 @@ class ListenerService(ServiceBase):
         )
         consumers = []
         for event in self.events:
+            log.debug("Setting up queue on exchange: %s with routing_key: %s", event.exchange, event.routing_key)
             e = Exchange(name=event.exchange, type="topic")
             q = Queue(
                 name=event.queue_name,
