@@ -22,6 +22,6 @@
         "tc_worker_id": "buildbot-bridge"
     },
     "reflector": {
-        "reclaim_interval": 60
+        "interval": 60
     }
 }

@@ -12,7 +12,7 @@ import logging
 log = logging.getLogger(__name__)
 
 
-ListenerServiceEvent = namedtuple("exchange", "routing_key", "callback", "queue_name")
+ListenerServiceEvent = namedtuple("ListenerServiceEvent", ("exchange", "routing_key", "callback", "queue_name"))
 
 
 class BBBDb(object):
