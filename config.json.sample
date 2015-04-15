@@ -10,16 +10,21 @@
 
     "pulse_user": "foo",
     "pulse_password": "foo",
+    "pulse_queue_basename": "queue/foo",
 
-    "taskcluster_pulse_exchange": "exchange/taskcluster-queue/v1/task-pending",
-    "taskcluster_pulse_topic": "*.*.*.*.*.*.test-buildbot.#",
-    "taskcluster_pulse_applabel": "buildbot-bridge-taskcluster",
-
-    "buildbot_pulse_exchange": "exchange/build",
-    "buildbot_pulse_topic": "build.*.*.*",
-    "buildbot_pulse_applabel": "buildbot-bridge-buildbot",
-    "taskcluster_worker_group": "buildbot-bridge",
-    "taskcluster_worker_id": "buildbot-bridge",
-
-    "reclaim_interval": 60
+    "tclistener": {
+        "pulse_exchange_basename": "exchange/taskcluster-queue/v1/",
+        "pulse_topic": "*.*.*.*.*.*.test-buildbot.#",
+        "pulse_applabel": "buildbot-bridge-taskcluster",
+        "worker_type": "buildbot-bridge"
+    },
+    "bblistener": {
+        "pulse_exchange": "exchange/build",
+        "pulse_applabel": "buildbot-bridge-buildbot",
+        "tc_worker_group": "buildbot-bridge",
+        "tc_worker_id": "buildbot-bridge"
+    },
+    "reflector": {
+        "reclaim_interval": 60
+    }
 }

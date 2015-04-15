@@ -1,15 +1,18 @@
+from collections import namedtuple
 import json
 
 import arrow
-from mozillapulse.config import PulseConfiguration
-from mozillapulse.consumers import GenericConsumer
+from kombu import Connection, Queue, Exchange
 import sqlalchemy as sa
-from taskcluster import Queue
+import taskcluster
 
 from .timeutils import parseDateString
 
 import logging
 log = logging.getLogger(__name__)
+
+
+ListenerServiceEvent = namedtuple("exchange", "routing_key", "callback", "queue_name")
 
 
 class BBBDb(object):
@@ -177,7 +180,7 @@ class ServiceBase(object):
     def __init__(self, bbb_db, buildbot_db, tc_config):
         self.bbb_db = BBBDb(bbb_db)
         self.buildbot_db = BuildbotDb(buildbot_db)
-        self.tc_queue = Queue(tc_config)
+        self.tc_queue = taskcluster.Queue(tc_config)
 
     def start(self):
         raise NotImplementedError()
@@ -185,27 +188,51 @@ class ServiceBase(object):
 
 class ListenerService(ServiceBase):
     """A base for BBB services that run in response to events from Pulse."""
-    def __init__(self, pulse_user, pulse_password, exchange, topic, applabel, event_handlers, *args, **kwargs):
+    def __init__(self, pulse_host, pulse_user, pulse_password, pulse_applabel, events, *args, **kwargs):
         super(ListenerService, self).__init__(*args, **kwargs)
 
-        self.pulse_config = PulseConfiguration(
-            user=pulse_user,
-            password=pulse_password,
-            # TODO: remove me
-            ssl=False
-        )
-        self.exchange = exchange
-        self.topic = topic
+        self.pulse_host = pulse_host
+        self.pulse_user = pulse_user
+        self.pulse_password = pulse_password
         self.applabel = applabel
-        self.event_handlers = event_handlers
-        self.pulse_consumer = GenericConsumer(self.pulse_config, durable=True, exchange=exchange, applabel=applabel)
-        self.pulse_consumer.configure(topic=topic, callback=self.receivedMessage)
+        self.events = events
 
     def start(self):
         log.info("Listening for Pulse messages")
         log.debug("Exchange is %s", self.exchange)
         log.debug("Topic is %s", self.topic)
-        self.pulse_consumer.listen()
+        connection = Connection(
+            hostname=self.pulse_host,
+            userid=self.pulse_user,
+            password=self.pulse_password,
+            # TODO: should be true
+            ssl=False,
+        )
+        consumers = []
+        for event in self.events:
+            e = Exchange(name=event.exchange, type="topic")
+            q = Queue(
+                name=event.queue_name,
+                exchange=e,
+                routing_key=event.routing_key,
+                durable=True,
+                exclusive=False,
+                auto_delete=False
+            )
+            c = connection.Consumer(
+                queues=[q],
+                callbacks=event.callback
+            )
+            c.consume()
+            consumers.append(c)
+
+        try:
+            while True:
+                connection.drain_events()
+        finally:
+            for c in consumers:
+                c.close()
+            connection.close()
 
     def receivedMessage(self, data, msg):
         log.debug("Got %s %s", data, msg)

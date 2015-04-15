@@ -3,7 +3,7 @@ import time
 import arrow
 from taskcluster.exceptions import TaskclusterRestFailure
 
-from .servicebase import ListenerService, ServiceBase
+from .servicebase import ListenerService, ServiceBase, ListenerServiceEvent
 from .tcutils import createJsonArtifact
 from .timeutils import parseDateString
 
@@ -20,15 +20,25 @@ class BuildbotListener(ListenerService):
      * Build started (build.$builder.started)
      * Build finished (build.$builder.log_uploaded)
     """
-    def __init__(self, tc_worker_group, tc_worker_id, *args, **kwargs):
+    def __init__(self, tc_worker_group, tc_worker_id, pulse_queue_basename, pulse_exchange, *args, **kwargs):
         self.tc_worker_group = tc_worker_group
         self.tc_worker_id = tc_worker_id
-        event_handlers = {
-            "started": self.handleStarted,
-            "log_uploaded": self.handleFinished,
-        }
+        events = (
+            ListenerServiceEvent(
+                queue_name="%s/started" % pulse_queue_basename,
+                exchange=pulse_exchange,
+                routing_key="build.*.*.started",
+                callback=self.handleStarted,
+            ),
+            ListenerServiceEvent(
+                queue_name="%s/log_uploaded" % pulse_queue_basename,
+                exchange=pulse_exchange,
+                routing_key="build.*.*.log_uploaded",
+                callback=self.handleFinished,
+            ),
+        )
 
-        super(BuildbotListener, self).__init__(*args, event_handlers=event_handlers, **kwargs)
+        super(BuildbotListener, self).__init__(*args, events=events, **kwargs)
 
     def getEvent(self, data, msg):
         return msg.delivery_info["routing_key"].split(".")[-1]
@@ -222,12 +232,22 @@ class TCListener(ListenerService):
     a single exchange, one instance of this class is required for each exchange
     that needs to be watched."""
 
-    def __init__(self, *args, **kwargs):
-        event_handlers = {
-            "task-pending": self.handlePending,
-            "task-exception": self.handleCancellation,
-        }
-        super(TCListener, self).__init__(*args, event_handlers=event_handlers, **kwargs)
+    def __init__(self, pulse_queue_basename, pulse_exchange_basename, worker_type, *args, **kwargs):
+        events = (
+            ListenerServiceEvent(
+                queue_name="%s/task-pending" % pulse_queue_basename,
+                exchange="%s/task-pending" % pulse_exchange_basename,
+                routing_key="*.*.*.*.*.*.%s.#" % worker_type,
+                callback=self.handlePending,
+            ),
+            ListenerServiceEvent(
+                queue_name="%s/task-exception" % pulse_queue_basename,
+                exchange="%s/task-exception" % pulse_exchange_basename,
+                routing_key="*.*.*.*.*.*.%s.#" % worker_type,
+                callback=self.handleCancelled,
+            ),
+        )
+        super(TCListener, self).__init__(*args, events=events, **kwargs)
 
     def getEvent(self, data, msg):
         """Events from Taskcluster are deriverd from the last segment of the

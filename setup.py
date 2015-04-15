@@ -17,7 +17,7 @@ setup(
         "arrow",
         "taskcluster>=0.0.16",
         "sqlalchemy",
-        "mozillapulse",
+        "kombu",
         "redo",
         "mysql-python",
         "nose",

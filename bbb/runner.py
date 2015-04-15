@@ -24,7 +24,10 @@ def main():
     logging.basicConfig(level=args.loglevel, format="%(asctime)s - %(name)s - %(message)s")
     logging.getLogger("bbb").setLevel(args.loglevel)
 
-    config = json.load(open(args.config))
+    config = {
+        "pulse_host": "pulse.mozilla.org",
+    }
+    config.update(json.load(open(args.config)))
 
     kwargs = {
         "bbb_db": config["bbb_db"],
@@ -32,28 +35,24 @@ def main():
         "tc_config": config["taskcluster_queue_config"],
     }
     if args.service[0] == "bblistener":
+        kwargs.update(config["bblistener"])
         service = BuildbotListener(
             pulse_user=config["pulse_user"],
             pulse_password=config["pulse_password"],
-            exchange=config["buildbot_pulse_exchange"],
-            topic=config["buildbot_pulse_topic"],
-            applabel=config["buildbot_pulse_applabel"],
-            tc_worker_group=config["taskcluster_worker_group"],
-            tc_worker_id=config["taskcluster_worker_id"],
+            pulse_queue_basename=config["pulse_queue_basename"],
             **kwargs
         )
     elif args.service[0] == "reflector":
+        kwargs.update(config["reflector"])
         service = Reflector(
-            interval=config["reclaim_interval"],
             **kwargs
         )
     elif args.service[0] == "tclistener":
+        kwargs.update(config["tclistener"])
         service = TCListener(
             pulse_user=config["pulse_user"],
             pulse_password=config["pulse_password"],
-            exchange=config["taskcluster_pulse_exchange"],
-            topic=config["taskcluster_pulse_topic"],
-            applabel=config["taskcluster_pulse_applabel"],
+            pulse_queue_basename=config["pulse_queue_basename"],
             **kwargs
         )
     else:
