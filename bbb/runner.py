@@ -1,8 +1,6 @@
 import json
 
-from .services.bblistener import BuildbotListener
-from .services.reflector import Reflector
-from .services.tclistener import TCListener
+from .services import BuildbotListener, TCListener, Reflector
 
 import logging
 log = logging.getLogger(__name__)

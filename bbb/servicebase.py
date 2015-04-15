@@ -188,13 +188,12 @@ class ServiceBase(object):
 
 class ListenerService(ServiceBase):
     """A base for BBB services that run in response to events from Pulse."""
-    def __init__(self, pulse_host, pulse_user, pulse_password, pulse_applabel, events, *args, **kwargs):
+    def __init__(self, pulse_host, pulse_user, pulse_password, events, *args, **kwargs):
         super(ListenerService, self).__init__(*args, **kwargs)
 
         self.pulse_host = pulse_host
         self.pulse_user = pulse_user
         self.pulse_password = pulse_password
-        self.applabel = applabel
         self.events = events
 
     def start(self):

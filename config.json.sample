@@ -14,12 +14,10 @@
 
     "tclistener": {
         "pulse_exchange_basename": "exchange/taskcluster-queue/v1/",
-        "pulse_applabel": "buildbot-bridge-taskcluster",
         "worker_type": "buildbot-bridge"
     },
     "bblistener": {
         "pulse_exchange": "exchange/build",
-        "pulse_applabel": "buildbot-bridge-buildbot",
         "tc_worker_group": "buildbot-bridge",
         "tc_worker_id": "buildbot-bridge"
     },

@@ -25,7 +25,6 @@ class TestBuildbotListener(unittest.TestCase):
             pulse_password="fake",
             exchange="fake",
             topic="fake",
-            applabel="fake",
             tc_worker_group="workwork",
             tc_worker_id="workwork",
         )
@@ -294,7 +293,6 @@ class TestTCListener(unittest.TestCase):
             pulse_password="fake",
             exchange="fake",
             topic="fake",
-            applabel="fake",
         )
         makeSchedulerDb(self.tclistener.buildbot_db.db)
         # Replace the TaskCluster Queue object with a Mock because we never
