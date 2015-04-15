@@ -40,9 +40,6 @@ class BuildbotListener(ListenerService):
 
         super(BuildbotListener, self).__init__(*args, events=events, **kwargs)
 
-    def getEvent(self, data, msg):
-        return msg.delivery_info["routing_key"].split(".")[-1]
-
     def handleStarted(self, data, msg):
         """When a Build starts in Buildbot we claim the task in
         Taskcluster, which will move it into the "running" state there. We
@@ -248,11 +245,6 @@ class TCListener(ListenerService):
             ),
         )
         super(TCListener, self).__init__(*args, events=events, **kwargs)
-
-    def getEvent(self, data, msg):
-        """Events from Taskcluster are deriverd from the last segment of the
-        exchange name."""
-        return msg.delivery_info["exchange"].split("/")[-1]
 
     def handlePending(self, data, msg):
         """When a Task becomes pending in Taskcluster it may be because the

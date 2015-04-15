@@ -232,23 +232,3 @@ class ListenerService(ServiceBase):
             for c in consumers:
                 c.close()
             connection.close()
-
-    def receivedMessage(self, data, msg):
-        log.debug("Got %s %s", data, msg)
-        log.info("Received message on %s", msg.delivery_info["routing_key"])
-
-        event = self.getEvent(data, msg)
-
-        try:
-            if self.event_handlers.get(event):
-                log.info("Handling event: %s", event)
-                self.event_handlers[event](data, msg)
-            else:
-                log.debug("No event handler for: %s", event)
-        finally:
-            # TODO: Should we ack here even if there was an exception? Retrying
-            # the same message over and over again may not work.
-            msg.ack()
-
-    def getEvent(self, *args, **kwargs):
-        raise NotImplementedError()
