@@ -244,7 +244,7 @@ class TCListener(ListenerService):
                 queue_name="%s/task-exception" % pulse_queue_basename,
                 exchange="%s/task-exception" % pulse_exchange_basename,
                 routing_key="*.*.*.*.*.*.%s.#" % worker_type,
-                callback=self.handleCancelled,
+                callback=self.handleException,
             ),
         )
         super(TCListener, self).__init__(*args, events=events, **kwargs)
@@ -280,6 +280,6 @@ class TCListener(ListenerService):
             brid = self.buildbot_db.injectTask(taskid, tc_task)
             self.bbb_db.createTask(taskid, runid, brid, tc_task["created"])
 
-    def handleCancellation(self, taskid, runid):
+    def handleException(self, taskid, runid):
         # TODO: implement me
         pass
