@@ -45,6 +45,7 @@ class BuildbotListener(ListenerService):
         Taskcluster, which will move it into the "running" state there. We
         also update the BBB database with the claim time which triggers the
         Reflector to start reclaiming it periodically."""
+        msg.ack()
         # TODO: Error handling?
         buildnumber = data["payload"]["build"]["number"]
         for brid in self.buildbot_db.getBuildRequests(buildnumber):
@@ -66,6 +67,7 @@ class BuildbotListener(ListenerService):
         instead of "build.foo.finished". This is because only the former
         contains all of the BuildRequest ids that the Build satisfied.
         """
+        msg.ack()
         # Get the request_ids from the properties
         try:
             properties = dict((key, (value, source)) for (key, value, source) in data["payload"]["build"]["properties"])
@@ -254,6 +256,7 @@ class TCListener(ListenerService):
         In the case of the latter, this method updates the existing row in the
         BBB database to start tracking the new Run."""
 
+        msg.ack()
         taskid = data["status"]["taskId"]
         runid = data["status"]["runs"][-1]["runId"]
 
@@ -274,4 +277,5 @@ class TCListener(ListenerService):
 
     def handleException(self, taskid, runid):
         # TODO: implement me
+        msg.ack()
         pass
