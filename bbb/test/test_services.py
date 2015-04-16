@@ -21,10 +21,11 @@ class TestBuildbotListener(unittest.TestCase):
                     "accessToken": "fake",
                 }
             },
+            pulse_host="fake",
             pulse_user="fake",
             pulse_password="fake",
-            exchange="fake",
-            topic="fake",
+            pulse_queue_basename="fake",
+            pulse_exchange="fake",
             tc_worker_group="workwork",
             tc_worker_id="workwork",
         )
@@ -55,7 +56,7 @@ INSERT INTO builds
         )
         data = {"payload": {"build": {"number": 2}}}
         self.bblistener.tc_queue.claimTask.return_value = {"takenUntil": 100}
-        self.bblistener.handleStarted(data, {})
+        self.bblistener.handleStarted(data, Mock())
 
         self.assertEquals(self.bblistener.tc_queue.claimTask.call_count, 1)
         bbb_state = self.tasks.select().execute().fetchall()
@@ -89,7 +90,7 @@ INSERT INTO builds
         )
         data = {"payload": {"build": {"number": 3}}}
         self.bblistener.tc_queue.claimTask.return_value = {"takenUntil": 80}
-        self.bblistener.handleStarted(data, {})
+        self.bblistener.handleStarted(data, Mock())
 
         self.assertEquals(self.bblistener.tc_queue.claimTask.call_count, 2)
         bbb_state = self.tasks.select().execute().fetchall()
@@ -130,7 +131,7 @@ INSERT INTO builds
             "storageType": "s3",
             "putUrl": "http://foo.com",
         }
-        self.bblistener.handleFinished(data, {})
+        self.bblistener.handleFinished(data, Mock())
 
     def testHandleFinishedSuccess(self):
         self._handleFinishedTest(SUCCESS)
@@ -289,10 +290,12 @@ class TestTCListener(unittest.TestCase):
                     "accessToken": "fake",
                 }
             },
+            pulse_host="fake",
             pulse_user="fake",
             pulse_password="fake",
-            exchange="fake",
-            topic="fake",
+            pulse_queue_basename="fake",
+            pulse_exchange_basename="fake",
+            worker_type="fake",
         )
         makeSchedulerDb(self.tclistener.buildbot_db.db)
         # Replace the TaskCluster Queue object with a Mock because we never
@@ -315,7 +318,7 @@ class TestTCListener(unittest.TestCase):
         processed_date = fake_now.return_value = Arrow(2015, 4, 1)
         self.tclistener.tc_queue.task.return_value = {"created": 50}
         self.buildbot_db.injectTask.return_value = 1
-        self.tclistener.handlePending(data, {})
+        self.tclistener.handlePending(data, Mock())
 
         self.assertEquals(self.tclistener.tc_queue.task.call_count, 1)
         self.assertEquals(self.buildbot_db.injectTask.call_count, 1)
@@ -346,7 +349,7 @@ class TestTCListener(unittest.TestCase):
             ],
         }}
 
-        self.tclistener.handlePending(data, {})
+        self.tclistener.handlePending(data, Mock())
         bbb_state = self.tasks.select().execute().fetchall()
         self.assertEquals(len(bbb_state), 1)
         self.assertEquals(bbb_state[0].buildrequestId, 1)
