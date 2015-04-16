@@ -22,7 +22,7 @@ def main():
 
     config = json.load(open(args.config))
 
-    logfile = config[args.service]["logfile"]
+    logfile = config[args.service[0]]["logfile"]
     if not logfile:
         logfile = "%s.log" % args.service
 
@@ -35,17 +35,19 @@ def main():
         "tc_config": config["taskcluster_queue_config"],
     }
     if args.service[0] == "bblistener":
-        kwargs.update(config["bblistener"])
         service = BuildbotListener(
             pulse_host="pulse.mozilla.org",
             pulse_user=config["pulse_user"],
             pulse_password=config["pulse_password"],
             pulse_queue_basename=config["pulse_queue_basename"],
+            pulse_exchange=config["bblistener"]["pulse_exchange"],
+            tc_worker_group=config["bblistener"]["tc_worker_group"],
+            tc_worker_id=config["bblistener"]["tc_worker_id"],
             **kwargs
         )
     elif args.service[0] == "reflector":
-        kwargs.update(config["reflector"])
         service = Reflector(
+            interval=config["reflector"]["interval"],
             **kwargs
         )
     elif args.service[0] == "tclistener":
@@ -55,6 +57,8 @@ def main():
             pulse_user=config["pulse_user"],
             pulse_password=config["pulse_password"],
             pulse_queue_basename=config["pulse_queue_basename"],
+            pulse_exchange_basename=config["tclistener"]["pulse_exchange_basename"],
+            worker_type=config["tclistener"]["worker_type"],
             **kwargs
         )
     else:
