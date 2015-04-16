@@ -15,6 +15,9 @@
     "tclistener": {
         "pulse_exchange_basename": "exchange/taskcluster-queue/v1",
         "worker_type": "buildbot-bridge",
+        "allowed_builders": [
+            ".*alder.*",
+        ],
         "logfile": "tclistener.log"
     },
     "bblistener": {

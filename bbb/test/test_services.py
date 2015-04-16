@@ -296,6 +296,9 @@ class TestTCListener(unittest.TestCase):
             pulse_queue_basename="fake",
             pulse_exchange_basename="fake",
             worker_type="fake",
+            allowed_builders=(
+                ".*good.*",
+            ),
         )
         makeSchedulerDb(self.tclistener.buildbot_db.db)
         # Replace the TaskCluster Queue object with a Mock because we never
@@ -316,7 +319,12 @@ class TestTCListener(unittest.TestCase):
         }}
 
         processed_date = fake_now.return_value = Arrow(2015, 4, 1)
-        self.tclistener.tc_queue.task.return_value = {"created": 50}
+        self.tclistener.tc_queue.task.return_value = {
+            "created": 50,
+            "payload": {
+                "buildername": "builder good name",
+            },
+        }
         self.buildbot_db.injectTask.return_value = 1
         self.tclistener.handlePending(data, Mock())
 
@@ -348,6 +356,12 @@ class TestTCListener(unittest.TestCase):
                 {"runId": 1},
             ],
         }}
+        self.tclistener.tc_queue.task.return_value = {
+            "created": 20,
+            "payload": {
+                "buildername": "builder good name",
+            },
+        }
 
         self.tclistener.handlePending(data, Mock())
         bbb_state = self.tasks.select().execute().fetchall()
@@ -358,3 +372,23 @@ class TestTCListener(unittest.TestCase):
         self.assertEquals(bbb_state[0].createdDate, 23)
         self.assertEquals(bbb_state[0].processedDate, 34)
         self.assertEquals(bbb_state[0].takenUntil, None)
+
+    def testHandlePendingDisallowedBuilder(self):
+        taskid = makeTaskId()
+        data = {"status": {
+            "taskId": taskid,
+            "runs": [
+                {"runId": 0},
+            ],
+        }}
+
+        self.buildbot_db.injectTask.return_value = 2
+        self.tclistener.tc_queue.task.return_value = {
+            "created": 20,
+            "payload": {
+                "buildername": "builder bad name",
+            },
+        }
+        self.tclistener.handlePending(data, Mock())
+
+        self.assertEquals(self.tclistener.tc_queue.reportException.call_count, 1)

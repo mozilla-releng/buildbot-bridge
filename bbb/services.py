@@ -1,3 +1,4 @@
+import re
 import time
 
 import arrow
@@ -232,7 +233,9 @@ class TCListener(ListenerService):
     a single exchange, one instance of this class is required for each exchange
     that needs to be watched."""
 
-    def __init__(self, pulse_queue_basename, pulse_exchange_basename, worker_type, *args, **kwargs):
+    def __init__(self, pulse_queue_basename, pulse_exchange_basename, worker_type,
+                 allowed_builders=(), *args, **kwargs):
+        self.allowed_builders = allowed_builders
         events = (
             ListenerServiceEvent(
                 queue_name="%s/task-pending" % pulse_queue_basename,
@@ -261,7 +264,25 @@ class TCListener(ListenerService):
         taskid = data["status"]["taskId"]
         runid = data["status"]["runs"][-1]["runId"]
 
+        tc_task = self.tc_queue.task(taskid)
         our_task = self.bbb_db.getTask(taskid)
+
+        # If the buildername in the payload of the Task doesn't match any of
+        # allowed patterns, we can't do anything!
+        buildername = tc_task["payload"].get("buildername")
+        for allowed in self.allowed_builders:
+            if re.match(allowed, buildername):
+                break
+        else:
+            # malformed-payload is the most accurate TC status for this situation.
+            self.tc_queue.reportException(taskid, runid, {"reason": "malformed-payload"})
+            # If this Task is already in our database, we should delete it
+            # because the Task has been cancelled.
+            if our_task:
+                # TODO: Should we kill the running Build?
+                self.bbb_db.deleteBuildRequest(our_task.buildrequestId)
+            return
+
         # If the task already exists in the BBB database we just need to
         # update our runId. If we created a new BuildRequest for it we'd end
         # up with an extra Build.
@@ -272,7 +293,6 @@ class TCListener(ListenerService):
         # as running. The BuildbotListener will take care of that when a slave
         # actually picks up the job.
         else:
-            tc_task = self.tc_queue.task(taskid)
             brid = self.buildbot_db.injectTask(taskid, tc_task)
             self.bbb_db.createTask(taskid, runid, brid, tc_task["created"])
 
