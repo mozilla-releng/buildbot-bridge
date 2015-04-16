@@ -391,4 +391,4 @@ class TestTCListener(unittest.TestCase):
         }
         self.tclistener.handlePending(data, Mock())
 
-        self.assertEquals(self.tclistener.tc_queue.reportException.call_count, 1)
+        self.assertEquals(self.tclistener.tc_queue.cancelTask.call_count, 1)

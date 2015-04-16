@@ -272,10 +272,14 @@ class TCListener(ListenerService):
         buildername = tc_task["payload"].get("buildername")
         for allowed in self.allowed_builders:
             if re.match(allowed, buildername):
+                log.debug("Builder %s matches an allowed pattern", buildername)
                 break
         else:
-            # malformed-payload is the most accurate TC status for this situation.
-            self.tc_queue.reportException(taskid, runid, {"reason": "malformed-payload"})
+            log.info("Builder %s does not match any pattern, rejecting it", buildername)
+            # malformed-payload is the most accurate TC status for this situation
+            # but we can't use reportException for cancelling - so this will show
+            # up as "cancelled" on TC.
+            self.tc_queue.cancelTask(taskid)
             # If this Task is already in our database, we should delete it
             # because the Task has been cancelled.
             if our_task:
