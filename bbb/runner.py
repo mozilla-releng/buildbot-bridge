@@ -51,7 +51,6 @@ def main():
             **kwargs
         )
     elif args.service[0] == "tclistener":
-        kwargs.update(config["tclistener"])
         service = TCListener(
             pulse_host="pulse.mozilla.org",
             pulse_user=config["pulse_user"],
