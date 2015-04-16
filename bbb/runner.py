@@ -20,10 +20,14 @@ def main():
 
     args = parser.parse_args()
 
-    logging.basicConfig(level=args.loglevel, format="%(asctime)s - %(name)s - %(message)s")
-    logging.getLogger("bbb").setLevel(args.loglevel)
-
     config = json.load(open(args.config))
+
+    logfile = config[args.service]["logfile"]
+    if not logfile:
+        logfile = "%s.log" % args.service
+
+    logging.basicConfig(filename=logfile, level=args.loglevel, format="%(asctime)s - %(name)s - %(message)s")
+    logging.getLogger("bbb").setLevel(args.loglevel)
 
     kwargs = {
         "bbb_db": config["bbb_db"],
