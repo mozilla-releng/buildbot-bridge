@@ -67,4 +67,7 @@ def main():
     log.info("Running %s service", args.service[0])
     # TODO: If we're not going to run with supervisor or something similar,
     # this should probably daemonize instead.
-    service.start()
+    try:
+        service.start()
+    except KeyboardInterrupt:
+        service.stop()
