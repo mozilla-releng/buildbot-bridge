@@ -1,4 +1,5 @@
 import json
+from signal import signal, SIGTERM
 
 from .services import BuildbotListener, TCListener, Reflector
 
@@ -54,14 +55,16 @@ def main():
         )
     else:
         raise ValueError("Couldn't find service to run!")
+
+    def handle_sigterm(*args):
+        log.info("Caught SIGTERM, shutting down...")
+        # Calling service.stop() should let the service finish whatever it's
+        # currently doing and then stop looping.
+        service.stop()
+
+    signal(SIGTERM, handle_sigterm)
+
     log.info("Running %s service", args.service[0])
     # TODO: If we're not going to run with supervisor or something similar,
     # this should probably daemonize instead.
-    while True:
-        try:
-            service.start()
-        except KeyboardInterrupt:
-            raise
-        except:
-            log.exception("Caught exception:")
-            # TODO: Sleep here? The Reflector reloads rapidly if it hits an Exception
+    service.start()

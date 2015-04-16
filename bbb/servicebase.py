@@ -181,9 +181,13 @@ class ServiceBase(object):
         self.bbb_db = BBBDb(bbb_db)
         self.buildbot_db = BuildbotDb(buildbot_db)
         self.tc_queue = taskcluster.Queue(tc_config)
+        self.running = False
 
     def start(self):
         raise NotImplementedError()
+
+    def stop(self):
+        self.running = False
 
 
 class ListenerService(ServiceBase):
@@ -198,6 +202,8 @@ class ListenerService(ServiceBase):
 
     def start(self):
         log.info("Listening for Pulse messages")
+        self.running = True
+
         connection = Connection(
             hostname=self.pulse_host,
             userid=self.pulse_user,
@@ -225,7 +231,12 @@ class ListenerService(ServiceBase):
             consumers.append(c)
 
         try:
-            while True:
+            # XXX: drain_events only returns after receiving a message. Is
+            # there a way we can have it return regularly to be non-blocking?
+            # Its timeout parameter seems to break receiving of messages.
+            # Maybe it doesn't matter if we can't shut down gracefully since
+            # messages will be reprocessed next time.
+            while self.running:
                 connection.drain_events()
         finally:
             for c in consumers:

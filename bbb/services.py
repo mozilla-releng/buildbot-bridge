@@ -158,7 +158,8 @@ class Reflector(ServiceBase):
 
     def start(self):
         log.info("Starting reflector")
-        while True:
+        self.running = True
+        while self.running:
             self.reflectTasks()
             time.sleep(self.interval)
 
