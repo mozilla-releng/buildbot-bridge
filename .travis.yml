@@ -7,7 +7,7 @@ install:
     - sudo apt-get update
     - sudo apt-get install sqlite3
     - python setup.py install
-    - pip install pyflakes nose
+    - pip install pyflakes nose mock
 
 script:
     - pyflakes .
