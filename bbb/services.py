@@ -331,7 +331,6 @@ class TCListener(ListenerService):
                 return
             brid = our_task.buildrequestId
             builds = self.buildbot_db.getBuilds(brid)
-            # TODO: do we actually need to know the branch name?
             branch = self.buildbot_db.getBranch(brid)
 
             # If there's already a Build running for the task, kill it!
