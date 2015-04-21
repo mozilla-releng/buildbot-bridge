@@ -290,6 +290,7 @@ class TestTCListener(unittest.TestCase):
                     "accessToken": "fake",
                 }
             },
+            buildapi_url="fake",
             pulse_host="fake",
             pulse_user="fake",
             pulse_password="fake",
@@ -307,6 +308,7 @@ class TestTCListener(unittest.TestCase):
         self.tclistener.tc_queue = Mock()
         self.tasks = self.tclistener.bbb_db.tasks_table
         self.buildbot_db = self.tclistener.buildbot_db = Mock()
+        self.buildapi = Mock()
 
     @patch("arrow.now")
     def testHandlePendingNewTask(self, fake_now):
@@ -392,3 +394,82 @@ class TestTCListener(unittest.TestCase):
         self.tclistener.handlePending(data, Mock())
 
         self.assertEquals(self.tclistener.tc_queue.cancelTask.call_count, 1)
+
+    def testHandleExceptionCancellationBuildStarted(self):
+        taskid = makeTaskId()
+        self.buildbot_db.execute(sa.text("""
+INSERT INTO buildrequests
+    (id, buildsetid, buildername, submitted_at)
+    VALUES (0, 0, "good", 5);
+"""))
+        self.buildbot_db.execute(sa.text("""
+INSERT INTO builds
+    (id, number, brid, start_time)
+    VALUES (0, 0, 0, 40);"""))
+        self.tasks.insert().execute(
+            buildrequestId=0,
+            taskId=taskid,
+            runId=0,
+            createdDate=3,
+            processedDate=7,
+            takenUntil=80,
+        )
+
+        data = {"status": {
+            "taskId": taskid,
+            "runs": [
+                {
+                    "runId": 0,
+                    "state": "exception",
+                    "reasonResolved": "canceled",
+                },
+            ],
+        }}
+
+        self.tclistener.handleException(data, Mock())
+
+        self.assertEquals(self.buildapi.cancelBuild.call_count, 1)
+        # BBB State shouldn't be deleted, because the BuildbotListener
+        # still needs to handle adding artifacts.
+        bbb_state = self.tasks.select().execute().fetchall()
+        self.assertEquals(len(bbb_state), 1)
+
+    def testHandleExceptionCancellationBuildNotStarted(self):
+        taskid = makeTaskId()
+        self.buildbot_db.execute(sa.text("""
+INSERT INTO buildrequests
+    (id, buildsetid, buildername, submitted_at)
+    VALUES (0, 0, "good", 5);
+"""))
+        self.tasks.insert().execute(
+            buildrequestId=0,
+            taskId=taskid,
+            runId=0,
+            createdDate=3,
+            processedDate=7,
+            takenUntil=80,
+        )
+
+        data = {"status": {
+            "taskId": taskid,
+            "runs": [
+                {
+                    "runId": 0,
+                    "state": "exception",
+                    "reasonResolved": "canceled",
+                },
+            ],
+        }}
+
+        self.tclistener.handleException(data, Mock())
+
+        self.assertEquals(self.buildapi.cancelBuildRequest.call_count, 1)
+        # BBB State shouldn't be deleted, because the BuildbotListener
+        # still needs to handle adding artifacts.
+        bbb_state = self.tasks.select().execute().fetchall()
+        self.assertEquals(len(bbb_state), 1)
+
+    def testHandleExceptionOtherReason(self):
+        self.tclistener.handleException(data, Mock())
+        # TODO: what can we verify here? the listener shouldn't have done
+        # anything...
