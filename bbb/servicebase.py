@@ -3,6 +3,7 @@ import json
 
 import arrow
 from kombu import Connection, Queue, Exchange
+import requests
 import sqlalchemy as sa
 import taskcluster
 
@@ -13,6 +14,20 @@ log = logging.getLogger(__name__)
 
 
 ListenerServiceEvent = namedtuple("ListenerServiceEvent", ("exchange", "routing_key", "callback", "queue_name"))
+
+
+
+class SelfserveClient(object):
+    def __init__(self, base_uri):
+        self.base_uri = base_uri
+
+    def cancelBuild(self, branch, id_):
+        url = "%s/build/%s" % (branch, id_)
+        requests.delete(url)
+
+    def cancelBuildRequest(self, branch, brid):
+        url = "%s/request/%s" % (branch, brid)
+        requests.delete(url)
 
 
 class BBBDb(object):
@@ -89,6 +104,17 @@ class BuildbotDb(object):
 
     def getBuilds(self, brid):
         return self.db.execute(sa.text("select * from builds where brid=:brid"), brid=brid).fetchall()
+
+    def getBranch(self, brid):
+        q = sa.text("""SELECT branch FROM sourcestamps
+INNER JOIN buildsets ON buildsets.sourcestampid=sourcestamps.id
+INNER JOIN buildrequests ON buildrequests.buildsetid=buildsets.id
+WHERE buildrequests.id=:brid""")
+        r = self.db.execute(q, brid=brid).fetchone()
+        if r:
+            return r[0]
+        else:
+            return None
 
     def createSourceStamp(self, sourcestamp={}):
         q = sa.text("""INSERT INTO sourcestamps

@@ -290,7 +290,7 @@ class TestTCListener(unittest.TestCase):
                     "accessToken": "fake",
                 }
             },
-            buildapi_url="fake",
+            selfserve_url="fake",
             pulse_host="fake",
             pulse_user="fake",
             pulse_password="fake",
@@ -306,9 +306,9 @@ class TestTCListener(unittest.TestCase):
         # want to actually talk to TC, just check if the calls that would've
         # been made are correct
         self.tclistener.tc_queue = Mock()
+        self.tclistener.selfserve = Mock()
         self.tasks = self.tclistener.bbb_db.tasks_table
-        self.buildbot_db = self.tclistener.buildbot_db = Mock()
-        self.buildapi = Mock()
+        self.buildbot_db = self.tclistener.buildbot_db.db
 
     @patch("arrow.now")
     def testHandlePendingNewTask(self, fake_now):
@@ -327,11 +327,9 @@ class TestTCListener(unittest.TestCase):
                 "buildername": "builder good name",
             },
         }
-        self.buildbot_db.injectTask.return_value = 1
         self.tclistener.handlePending(data, Mock())
 
         self.assertEquals(self.tclistener.tc_queue.task.call_count, 1)
-        self.assertEquals(self.buildbot_db.injectTask.call_count, 1)
         bbb_state = self.tasks.select().execute().fetchall()
         self.assertEquals(len(bbb_state), 1)
         self.assertEquals(bbb_state[0].buildrequestId, 1)
@@ -384,7 +382,6 @@ class TestTCListener(unittest.TestCase):
             ],
         }}
 
-        self.buildbot_db.injectTask.return_value = 2
         self.tclistener.tc_queue.task.return_value = {
             "created": 20,
             "payload": {
@@ -397,6 +394,14 @@ class TestTCListener(unittest.TestCase):
 
     def testHandleExceptionCancellationBuildStarted(self):
         taskid = makeTaskId()
+        self.buildbot_db.execute(sa.text("""
+INSERT INTO sourcestamps
+    (id, branch) VALUES (0, "foo");
+"""))
+        self.buildbot_db.execute(sa.text("""
+INSERT INTO buildsets
+    (id, sourcestampid, submitted_at) VALUES (0, 0, 2);
+"""))
         self.buildbot_db.execute(sa.text("""
 INSERT INTO buildrequests
     (id, buildsetid, buildername, submitted_at)
@@ -428,7 +433,7 @@ INSERT INTO builds
 
         self.tclistener.handleException(data, Mock())
 
-        self.assertEquals(self.buildapi.cancelBuild.call_count, 1)
+        self.assertEquals(self.tclistener.selfserve.cancelBuild.call_count, 1)
         # BBB State shouldn't be deleted, because the BuildbotListener
         # still needs to handle adding artifacts.
         bbb_state = self.tasks.select().execute().fetchall()
@@ -463,13 +468,24 @@ INSERT INTO buildrequests
 
         self.tclistener.handleException(data, Mock())
 
-        self.assertEquals(self.buildapi.cancelBuildRequest.call_count, 1)
+        self.assertEquals(self.tclistener.selfserve.cancelBuildRequest.call_count, 1)
         # BBB State shouldn't be deleted, because the BuildbotListener
         # still needs to handle adding artifacts.
         bbb_state = self.tasks.select().execute().fetchall()
         self.assertEquals(len(bbb_state), 1)
 
     def testHandleExceptionOtherReason(self):
+        data = {"status": {
+            "taskId": makeTaskId(),
+            "runs": [
+                {
+                    "runId": 0,
+                    "state": "exception",
+                    "reasonResolved": "malformed-payload",
+                },
+            ],
+        }}
+
         self.tclistener.handleException(data, Mock())
         # TODO: what can we verify here? the listener shouldn't have done
         # anything...
