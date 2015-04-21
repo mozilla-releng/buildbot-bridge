@@ -57,6 +57,7 @@ def main():
             pulse_password=config["pulse_password"],
             pulse_queue_basename=config["pulse_queue_basename"],
             pulse_exchange_basename=config["tclistener"]["pulse_exchange_basename"],
+            selfserve_url=config["tclistener"]["selfserve_url"],
             worker_type=config["tclistener"]["worker_type"],
             allowed_builders=config["tclistener"]["allowed_builders"],
             **kwargs
