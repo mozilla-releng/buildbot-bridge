@@ -129,9 +129,20 @@ class BuildbotListener(ListenerService):
                 self.tc_queue.reportException(taskid, runid, {"reason": "malformed-payload"})
                 self.tc_queue.rerunTask(taskid)
             elif results == CANCELLED:
+                # We could end up in this block for two different reasons:
+                # 1) Someone cancels the job through Buildbot. In this case
+                #    cancelTask is needed to reflect that state on Taskcluster.
+                # 2) Someone cancels the job through Taskcluster. In this case
+                #    the TCListener received that event and cancelled the Build
+                #    in Buildbot. When that Build finished it still got picked
+                #    up by us, and now we're here. The Buildbot and Taskcluster
+                #    states are already in sync, so we don't technically need
+                #    call cancelTask, but it doesn't hurt to (it just returns
+                #    the current Task status).
+                #
+                # In both cases we need to delete the BuildRequest from our own
+                # database.
                 log.info("Marking task %s as cancelled", taskid)
-                # TODO: probably need to wrap this in try/except to handle
-                # cancellations that originate from TC.
                 self.tc_queue.cancelTask(taskid)
                 self.bbb_db.deleteBuildRequest(brid)
 
