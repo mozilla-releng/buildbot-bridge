@@ -475,6 +475,14 @@ INSERT INTO buildrequests
         self.assertEquals(len(bbb_state), 1)
 
     def testHandleExceptionOtherReason(self):
+        self.tasks.insert().execute(
+            buildrequestId=0,
+            taskId=makeTaskId(),
+            runId=0,
+            createdDate=3,
+            processedDate=7,
+            takenUntil=80,
+        )
         data = {"status": {
             "taskId": makeTaskId(),
             "runs": [
@@ -487,5 +495,10 @@ INSERT INTO buildrequests
         }}
 
         self.tclistener.handleException(data, Mock())
-        # TODO: what can we verify here? the listener shouldn't have done
-        # anything...
+
+        # This event should be ignored by the handler, so we need to verify
+        # that none of our state has changed.
+        self.assertEquals(self.tclistener.selfserve.cancelBuild.call_count, 0)
+        self.assertEquals(self.tclistener.selfserve.cancelBuildRequest.call_count, 0)
+        bbb_state = self.tasks.select().execute().fetchall()
+        self.assertEquals(len(bbb_state), 1)
