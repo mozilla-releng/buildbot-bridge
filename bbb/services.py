@@ -297,7 +297,7 @@ class TCListener(ListenerService):
         # as running. The BuildbotListener will take care of that when a slave
         # actually picks up the job.
         else:
-            brid = self.buildbot_db.injectTask(taskid, tc_task)
+            brid = self.buildbot_db.injectTask(taskid, runid, tc_task)
             self.bbb_db.createTask(taskid, runid, brid, tc_task["created"])
 
     def handleException(self, data, msg):

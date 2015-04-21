@@ -120,7 +120,7 @@ class BuildbotDb(object):
             self.db.execute(q, buildsetid=buildsetid, key=key, value=value)
             log.info("Created buildset_property %s=%s", key, value)
 
-    def injectTask(self, taskId, task):
+    def injectTask(self, taskid, runid, task):
         payload = task["payload"]
         # Create a sourcestamp if necessary
         sourcestamp = payload.get('sourcestamp', {})
@@ -138,8 +138,8 @@ class BuildbotDb(object):
         submitted_at = parseDateString(task['created'])
         r = self.db.execute(
             q,
-            idstring="taskId:{}".format(taskId),
-            reason="Created by BBB for task {0}".format(taskId),
+            idstring="taskId:{}".format(taskid),
+            reason="Created by BBB for task {0}".format(taskid),
             sourcestampid=sourcestampid,
             submitted_at=submitted_at,
         )
@@ -150,7 +150,8 @@ class BuildbotDb(object):
         # Create properties
         properties = payload.get('properties', {})
         # Always create a property for the taskId
-        properties['taskId'] = taskId
+        properties['taskId'] = taskid
+        properties['runId'] = runid
         self.createBuildSetProperties(buildsetid, properties)
 
         # Create the buildrequest
