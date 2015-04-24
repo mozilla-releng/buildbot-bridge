@@ -46,6 +46,7 @@ class BuildbotListener(ListenerService):
         Taskcluster, which will move it into the "running" state there. We
         also update the BBB database with the claim time which triggers the
         Reflector to start reclaiming it periodically."""
+        log.debug("Handling started event: %s", data)
         msg.ack()
         # TODO: Error handling?
         buildnumber = data["payload"]["build"]["number"]
@@ -74,6 +75,7 @@ class BuildbotListener(ListenerService):
         instead of "build.foo.finished". This is because only the former
         contains all of the BuildRequest ids that the Build satisfied.
         """
+        log.debug("Handling finished event: %s", data)
         msg.ack()
         # Get the request_ids from the properties
         try:
