@@ -15,6 +15,9 @@ log = logging.getLogger(__name__)
 ListenerServiceEvent = namedtuple("ListenerServiceEvent", ("exchange", "routing_key", "callback", "queue_name"))
 
 
+class TaskNotFound(Exception):
+    pass
+
 class BBBDb(object):
     """Wrapper object for creation of and access to Buildbot Bridge database."""
     def __init__(self, uri):
@@ -46,7 +49,7 @@ class BBBDb(object):
     def getTaskFromBuildRequest(self, brid):
         task = self.tasks_table.select(self.tasks_table.c.buildrequestId == brid).execute().fetchone()
         if not task:
-            raise ValueError("Couldn't find task for brid %i", brid)
+            raise TaskNotFound("Couldn't find task for brid %i", brid)
         return task
 
     def createTask(self, taskid, runid, brid, created_date):

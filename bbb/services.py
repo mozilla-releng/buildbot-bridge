@@ -51,7 +51,11 @@ class BuildbotListener(ListenerService):
         buildnumber = data["payload"]["build"]["number"]
         for brid in self.buildbot_db.getBuildRequests(buildnumber):
             brid = brid[0]
-            task = self.bbb_db.getTaskFromBuildRequest(brid)
+            try:
+                task = self.bbb_db.getTaskFromBuildRequest(brid)
+            except TaskNotFound:
+                log.debug("Task not found for brid %s, nothing to do.", brid)
+                continue
             log.info("Claiming %s", task.taskId)
             claim = self.tc_queue.claimTask(task.taskId, task.runId, {
                 "workerGroup": self.tc_worker_group,
@@ -96,8 +100,8 @@ class BuildbotListener(ListenerService):
                 task = self.bbb_db.getTaskFromBuildRequest(brid)
                 taskid = task.taskId
                 runid = task.runId
-            except ValueError:
-                log.error("Couldn't find task for %i", brid)
+            except TaskNotFound:
+                log.debug("Task not found for brid %s, nothing to do.", brid)
                 continue
 
             log.debug("brid %i : taskId %s : runId %i", brid, taskid, runid)
