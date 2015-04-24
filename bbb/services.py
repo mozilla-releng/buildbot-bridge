@@ -4,7 +4,7 @@ import time
 import arrow
 from taskcluster.exceptions import TaskclusterRestFailure
 
-from .servicebase import ListenerService, ServiceBase, ListenerServiceEvent
+from .servicebase import ListenerService, ServiceBase, ListenerServiceEvent, TaskNotFound
 from .tcutils import createJsonArtifact
 from .timeutils import parseDateString
 
