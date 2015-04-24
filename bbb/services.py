@@ -49,7 +49,9 @@ class BuildbotListener(ListenerService):
         msg.ack()
         # TODO: Error handling?
         buildnumber = data["payload"]["build"]["number"]
-        for brid in self.buildbot_db.getBuildRequests(buildnumber):
+        master = data["_meta"]["master_name"]
+        incarnation = data["_meta"]["master_incarnation"]
+        for brid in self.buildbot_db.getBuildRequests(buildnumber, master, incarnation):
             brid = brid[0]
             try:
                 task = self.bbb_db.getTaskFromBuildRequest(brid)
