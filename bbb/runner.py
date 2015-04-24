@@ -1,8 +1,6 @@
 import json
 from signal import signal, SIGTERM
 
-from .services import BuildbotListener, TCListener, Reflector
-
 import logging
 log = logging.getLogger(__name__)
 
@@ -28,6 +26,10 @@ def main():
 
     logging.basicConfig(filename=logfile, level=args.loglevel, format="%(asctime)s - %(name)s - %(message)s")
     logging.getLogger("bbb").setLevel(args.loglevel)
+
+    # These need to be imported after setting up logging, otherwise they won't
+    # inherit the settings properly.
+    from .services import BuildbotListener, TCListener, Reflector
 
     kwargs = {
         "bbb_db": config["bbb_db"],
