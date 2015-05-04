@@ -18,8 +18,8 @@ SUCCESS, WARNINGS, FAILURE, SKIPPED, EXCEPTION, RETRY, CANCELLED = range(7)
 class BuildbotListener(ListenerService):
     """Listens for messages from Buildbot and responds appropriately.
     Currently handles the following types of events:
-     * Build started (build.$builder.started)
-     * Build finished (build.$builder.log_uploaded)
+     * Build started (build.$builder.$buildnum.started)
+     * Build finished (build.$builder.$buildnum.log_uploaded)
     """
     def __init__(self, tc_worker_group, tc_worker_id, pulse_queue_basename, pulse_exchange, *args, **kwargs):
         self.tc_worker_group = tc_worker_group
@@ -139,7 +139,7 @@ class BuildbotListener(ListenerService):
 
 
 class Reflector(ServiceBase):
-    """Reflects Task state in Taskcluster based on the state of the
+    """Reflects Task state into Taskcluster based on the state of the
     Buildbot and BBB databases. Each task may be in one of the following
     states:
      * If takenUntil is unset and the BuildRequest is complete the task is
