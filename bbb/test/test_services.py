@@ -57,7 +57,8 @@ INSERT INTO builds
         data = {
             "payload": {
                 "build": {
-                    "number": 2
+                    "number": 2,
+                    "builderName": "foo",
                 }
             },
             "_meta": {
@@ -101,7 +102,8 @@ INSERT INTO builds
         data = {
             "payload": {
                 "build": {
-                    "number": 3
+                    "number": 3,
+                    "builderName": "foo",
                  }
              },
             "_meta": {
