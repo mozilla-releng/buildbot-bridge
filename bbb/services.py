@@ -120,7 +120,7 @@ class BuildbotListener(ListenerService):
             log.info("Buildbot results are %s", results)
             if results == SUCCESS:
                 log.info("Marking task %s as completed", taskid)
-                self.tc_queue.reportCompleted(taskid, runid, {"success": True})
+                self.tc_queue.reportCompleted(taskid, runid)
                 self.bbb_db.deleteBuildRequest(brid)
             # Eventually we probably need to set something different here.
             elif results in (WARNINGS, FAILURE):
