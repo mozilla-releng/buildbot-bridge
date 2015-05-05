@@ -226,7 +226,7 @@ class Reflector(ServiceBase):
                 except TaskclusterRestFailure, e:
                     if e.superExc.response.status_code == 409:
                         # Conflict; it's expired
-                        log.warn("couldn't reclaim task %s: HTTP 409; deleting", t.taskId)
+                        log.exception("couldn't reclaim task %s: HTTP 409; deleting", t.taskId)
                         # TODO: probably should cancel the job in buildbot?
                         self.bbb_db.deleteBuildRequest(t.buildrequestId)
                     else:
