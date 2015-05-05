@@ -61,7 +61,8 @@ class BuildbotListener(ListenerService):
                 log.debug("Task not found for brid %s, nothing to do.", brid)
                 continue
             log.info("Claiming %s", task.taskId)
-            claim = self.tc_queue.claimTask(task.taskId, str(task.runId), {
+            # Taskcluster requires runId to be an int, but it comes to us as a long.
+            claim = self.tc_queue.claimTask(task.taskId, int(task.runId), {
                 "workerGroup": self.tc_worker_group,
                 "workerId": self.tc_worker_id,
             })
@@ -104,7 +105,7 @@ class BuildbotListener(ListenerService):
             try:
                 task = self.bbb_db.getTaskFromBuildRequest(brid)
                 taskid = task.taskId
-                runid = task.runId
+                runid = int(task.runId)
             except TaskNotFound:
                 log.debug("Task not found for brid %s, nothing to do.", brid)
                 continue
@@ -218,7 +219,7 @@ class Reflector(ServiceBase):
 
                 log.info("BuildRequest is in progress, reclaiming")
                 try:
-                    result = self.tc_queue.reclaimTask(t.taskId, t.runId)
+                    result = self.tc_queue.reclaimTask(t.taskId, int(t.runId))
                     # Update our own db with the new claim time.
                     self.bbb_db.updateTakenUntil(t.buildrequestId, parseDateString(result["takenUntil"]))
                     log.info("Task %s now takenUntil %s", t.taskId, result['takenUntil'])

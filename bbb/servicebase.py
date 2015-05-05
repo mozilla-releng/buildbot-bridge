@@ -1,5 +1,6 @@
 from collections import namedtuple
 import json
+import time
 
 import arrow
 from kombu import Connection, Queue, Exchange
@@ -50,6 +51,7 @@ class BBBDb(object):
         task = self.tasks_table.select(self.tasks_table.c.buildrequestId == brid).execute().fetchone()
         if not task:
             raise TaskNotFound("Couldn't find task for brid %i", brid)
+        print task
         return task
 
     def createTask(self, taskid, runid, brid, created_date):
