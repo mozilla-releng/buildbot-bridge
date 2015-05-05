@@ -85,7 +85,9 @@ class BuildbotDb(object):
         return self.db.execute(sa.text("select * from buildrequests where id=:brid"), brid=brid).fetchone()
 
     def getBuildRequests(self, buildnumber, buildername, claimed_by_name, claimed_by_incarnation):
-        return self.db.execute(
+        now = time.time()
+        # TODO: Speed this up. Sometimes takes upwards of 20 seconds.
+        ret = self.db.execute(
             sa.text("""select buildrequests.id from buildrequests join builds
                        ON buildrequests.id=builds.brid
                        WHERE builds.number=:buildnumber
@@ -97,6 +99,8 @@ class BuildbotDb(object):
             claimed_by_name=claimed_by_name,
             claimed_by_incarnation=claimed_by_incarnation,
         ).fetchall()
+        log.debug("getBuildRequests Query took %f seconds", time.time() - now)
+        return ret
 
     def getBuilds(self, brid):
         return self.db.execute(sa.text("select * from builds where brid=:brid"), brid=brid).fetchall()
