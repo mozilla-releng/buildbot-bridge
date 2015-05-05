@@ -67,7 +67,7 @@ class BuildbotListener(ListenerService):
                 "workerId": self.tc_worker_id,
             })
             log.debug("Got claim: %s", claim)
-            self.bbb_db.updateTakenUntil(brid, claim["takenUntil"])
+            self.bbb_db.updateTakenUntil(brid, parseDateString(claim["takenUntil"]))
 
     def handleFinished(self, data, msg):
         """When a Build finishes in Buildbot we pass along the final state of
@@ -308,7 +308,7 @@ class TCListener(ListenerService):
         # actually picks up the job.
         else:
             brid = self.buildbot_db.injectTask(taskid, runid, tc_task)
-            self.bbb_db.createTask(taskid, runid, brid, tc_task["created"])
+            self.bbb_db.createTask(taskid, runid, brid, parseDateString(tc_task["created"]))
 
     def handleException(self, data, msg):
         # TODO: implement me
