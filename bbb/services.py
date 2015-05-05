@@ -46,10 +46,14 @@ class BuildbotListener(ListenerService):
         Taskcluster, which will move it into the "running" state there. We
         also update the BBB database with the claim time which triggers the
         Reflector to start reclaiming it periodically."""
+        log.debug("Handling started event: %s", data)
         msg.ack()
         # TODO: Error handling?
         buildnumber = data["payload"]["build"]["number"]
-        for brid in self.buildbot_db.getBuildRequests(buildnumber):
+        buildername = data["payload"]["build"]["builderName"]
+        master = data["_meta"]["master_name"]
+        incarnation = data["_meta"]["master_incarnation"]
+        for brid in self.buildbot_db.getBuildRequests(buildnumber, buildername, master, incarnation):
             brid = brid[0]
             try:
                 task = self.bbb_db.getTaskFromBuildRequest(brid)
@@ -57,12 +61,13 @@ class BuildbotListener(ListenerService):
                 log.debug("Task not found for brid %s, nothing to do.", brid)
                 continue
             log.info("Claiming %s", task.taskId)
-            claim = self.tc_queue.claimTask(task.taskId, task.runId, {
+            # Taskcluster requires runId to be an int, but it comes to us as a long.
+            claim = self.tc_queue.claimTask(task.taskId, int(task.runId), {
                 "workerGroup": self.tc_worker_group,
                 "workerId": self.tc_worker_id,
             })
             log.debug("Got claim: %s", claim)
-            self.bbb_db.updateTakenUntil(brid, claim["takenUntil"])
+            self.bbb_db.updateTakenUntil(brid, parseDateString(claim["takenUntil"]))
 
     def handleFinished(self, data, msg):
         """When a Build finishes in Buildbot we pass along the final state of
@@ -72,6 +77,7 @@ class BuildbotListener(ListenerService):
         instead of "build.foo.finished". This is because only the former
         contains all of the BuildRequest ids that the Build satisfied.
         """
+        log.debug("Handling finished event: %s", data)
         msg.ack()
         # Get the request_ids from the properties
         try:
@@ -99,7 +105,7 @@ class BuildbotListener(ListenerService):
             try:
                 task = self.bbb_db.getTaskFromBuildRequest(brid)
                 taskid = task.taskId
-                runid = task.runId
+                runid = int(task.runId)
             except TaskNotFound:
                 log.debug("Task not found for brid %s, nothing to do.", brid)
                 continue
@@ -213,7 +219,7 @@ class Reflector(ServiceBase):
 
                 log.info("BuildRequest is in progress, reclaiming")
                 try:
-                    result = self.tc_queue.reclaimTask(t.taskId, t.runId)
+                    result = self.tc_queue.reclaimTask(t.taskId, int(t.runId))
                     # Update our own db with the new claim time.
                     self.bbb_db.updateTakenUntil(t.buildrequestId, parseDateString(result["takenUntil"]))
                     log.info("Task %s now takenUntil %s", t.taskId, result['takenUntil'])
@@ -302,7 +308,7 @@ class TCListener(ListenerService):
         # actually picks up the job.
         else:
             brid = self.buildbot_db.injectTask(taskid, runid, tc_task)
-            self.bbb_db.createTask(taskid, runid, brid, tc_task["created"])
+            self.bbb_db.createTask(taskid, runid, brid, parseDateString(tc_task["created"]))
 
     def handleException(self, data, msg):
         # TODO: implement me

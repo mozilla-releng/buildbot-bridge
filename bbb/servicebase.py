@@ -1,5 +1,6 @@
 from collections import namedtuple
 import json
+import time
 
 import arrow
 from kombu import Connection, Queue, Exchange
@@ -84,13 +85,23 @@ class BuildbotDb(object):
     def getBuildRequest(self, brid):
         return self.db.execute(sa.text("select * from buildrequests where id=:brid"), brid=brid).fetchone()
 
-    def getBuildRequests(self, buildnumber):
-        # TODO: this is busted. it returns hundreds of thousands of results most of time, because
-        # builds.number isn't unique.
-        return self.db.execute(
-            sa.text("select buildrequests.id from buildrequests join builds ON buildrequests.id=builds.brid where builds.number=:buildnumber"),
+    def getBuildRequests(self, buildnumber, buildername, claimed_by_name, claimed_by_incarnation):
+        now = time.time()
+        # TODO: Speed this up. Sometimes takes upwards of 20 seconds.
+        ret = self.db.execute(
+            sa.text("""select buildrequests.id from buildrequests join builds
+                       ON buildrequests.id=builds.brid
+                       WHERE builds.number=:buildnumber
+                         AND buildrequests.buildername=:buildername
+                         AND buildrequests.claimed_by_name=:claimed_by_name
+                         AND buildrequests.claimed_by_incarnation=:claimed_by_incarnation"""),
             buildnumber=buildnumber,
+            buildername=buildername,
+            claimed_by_name=claimed_by_name,
+            claimed_by_incarnation=claimed_by_incarnation,
         ).fetchall()
+        log.debug("getBuildRequests Query took %f seconds", time.time() - now)
+        return ret
 
     def getBuilds(self, brid):
         return self.db.execute(sa.text("select * from builds where brid=:brid"), brid=brid).fetchall()
