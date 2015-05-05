@@ -61,7 +61,7 @@ class BuildbotListener(ListenerService):
                 log.debug("Task not found for brid %s, nothing to do.", brid)
                 continue
             log.info("Claiming %s", task.taskId)
-            claim = self.tc_queue.claimTask(task.taskId, task.runId, {
+            claim = self.tc_queue.claimTask(task.taskId, str(task.runId), {
                 "workerGroup": self.tc_worker_group,
                 "workerId": self.tc_worker_id,
             })
