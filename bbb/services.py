@@ -287,8 +287,8 @@ class TCListener(ListenerService):
         else:
             log.info("Builder %s does not match any pattern, rejecting it", buildername)
             # malformed-payload is the most accurate TC status for this situation
-            # but we can't use reportException for cancelling - so this will show
-            # up as "cancelled" on TC.
+            # but we can't use reportException for cancelling pending tasks,
+            # so this will show up as "cancelled" on TC.
             self.tc_queue.cancelTask(taskid)
             # If this Task is already in our database, we should delete it
             # because the Task has been cancelled.
