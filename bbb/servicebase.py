@@ -113,6 +113,11 @@ class BuildbotDb(object):
                     (:branch, :revision, NULL, :repository, :project)
                 """)
         branch = sourcestamp.get('branch')
+        # Branches from Taskcluster usually come in as a full URL.
+        # Sourcestamps need the "short" version of the branch, which is
+        # path component of the URL. Eg: "integration/mozilla-inbound"
+        if "://" in branch:
+            branch = urlparse(branch).path.strip("/")
         revision = sourcestamp.get('revision')
         repository = sourcestamp.get('repository', '')
         project = sourcestamp.get('project', '')
