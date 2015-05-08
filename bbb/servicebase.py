@@ -1,6 +1,7 @@
 from collections import namedtuple
 import json
 import time
+from urlparse import urlparse
 
 import arrow
 from kombu import Connection, Queue, Exchange
