@@ -4,7 +4,7 @@ import time
 import arrow
 from taskcluster.exceptions import TaskclusterRestFailure
 
-from .servicebase import ListenerService, ServiceBase, ListenerServiceEvent, SelfserveClient
+from .servicebase import ListenerService, ServiceBase, ListenerServiceEvent, SelfserveClient, TaskNotFound
 from .tcutils import createJsonArtifact
 from .timeutils import parseDateString
 
@@ -18,8 +18,8 @@ SUCCESS, WARNINGS, FAILURE, SKIPPED, EXCEPTION, RETRY, CANCELLED = range(7)
 class BuildbotListener(ListenerService):
     """Listens for messages from Buildbot and responds appropriately.
     Currently handles the following types of events:
-     * Build started (build.$builder.started)
-     * Build finished (build.$builder.log_uploaded)
+     * Build started (build.$builder.$buildnum.started)
+     * Build finished (build.$builder.$buildnum.log_uploaded)
     """
     def __init__(self, tc_worker_group, tc_worker_id, pulse_queue_basename, pulse_exchange, *args, **kwargs):
         self.tc_worker_group = tc_worker_group
@@ -46,19 +46,28 @@ class BuildbotListener(ListenerService):
         Taskcluster, which will move it into the "running" state there. We
         also update the BBB database with the claim time which triggers the
         Reflector to start reclaiming it periodically."""
+        log.debug("Handling started event: %s", data)
         msg.ack()
         # TODO: Error handling?
         buildnumber = data["payload"]["build"]["number"]
-        for brid in self.buildbot_db.getBuildRequests(buildnumber):
+        buildername = data["payload"]["build"]["builderName"]
+        master = data["_meta"]["master_name"]
+        incarnation = data["_meta"]["master_incarnation"]
+        for brid in self.buildbot_db.getBuildRequests(buildnumber, buildername, master, incarnation):
             brid = brid[0]
-            task = self.bbb_db.getTaskFromBuildRequest(brid)
+            try:
+                task = self.bbb_db.getTaskFromBuildRequest(brid)
+            except TaskNotFound:
+                log.debug("Task not found for brid %s, nothing to do.", brid)
+                continue
             log.info("Claiming %s", task.taskId)
-            claim = self.tc_queue.claimTask(task.taskId, task.runId, {
+            # Taskcluster requires runId to be an int, but it comes to us as a long.
+            claim = self.tc_queue.claimTask(task.taskId, int(task.runId), {
                 "workerGroup": self.tc_worker_group,
                 "workerId": self.tc_worker_id,
             })
             log.debug("Got claim: %s", claim)
-            self.bbb_db.updateTakenUntil(brid, claim["takenUntil"])
+            self.bbb_db.updateTakenUntil(brid, parseDateString(claim["takenUntil"]))
 
     def handleFinished(self, data, msg):
         """When a Build finishes in Buildbot we pass along the final state of
@@ -68,6 +77,7 @@ class BuildbotListener(ListenerService):
         instead of "build.foo.finished". This is because only the former
         contains all of the BuildRequest ids that the Build satisfied.
         """
+        log.debug("Handling finished event: %s", data)
         msg.ack()
         # Get the request_ids from the properties
         try:
@@ -95,9 +105,9 @@ class BuildbotListener(ListenerService):
             try:
                 task = self.bbb_db.getTaskFromBuildRequest(brid)
                 taskid = task.taskId
-                runid = task.runId
-            except ValueError:
-                log.error("Couldn't find task for %i", brid)
+                runid = int(task.runId)
+            except TaskNotFound:
+                log.debug("Task not found for brid %s, nothing to do.", brid)
                 continue
 
             log.debug("brid %i : taskId %s : runId %i", brid, taskid, runid)
@@ -110,7 +120,7 @@ class BuildbotListener(ListenerService):
             log.info("Buildbot results are %s", results)
             if results == SUCCESS:
                 log.info("Marking task %s as completed", taskid)
-                self.tc_queue.reportCompleted(taskid, runid, {"success": True})
+                self.tc_queue.reportCompleted(taskid, runid)
                 self.bbb_db.deleteBuildRequest(brid)
             # Eventually we probably need to set something different here.
             elif results in (WARNINGS, FAILURE):
@@ -126,7 +136,13 @@ class BuildbotListener(ListenerService):
                 self.bbb_db.deleteBuildRequest(brid)
             elif results == RETRY:
                 log.info("Marking task %s as malformed payload exception and rerunning", taskid)
+                # TODO: can we use worker-shutdown instead of rerunTask here? We used malformed-payload
+                # before because TCListener didn't know how to skip build request creation for
+                # reruns....
+                # using worker-shutdown would probably be better for treeherder, because
+                # the buildbot and TC states would line up better.
                 self.tc_queue.reportException(taskid, runid, {"reason": "malformed-payload"})
+                # TODO: runid in buildbot properties is probably run for the rerun....is that fixable?
                 self.tc_queue.rerunTask(taskid)
             elif results == CANCELLED:
                 # We could end up in this block for two different reasons:
@@ -148,7 +164,7 @@ class BuildbotListener(ListenerService):
 
 
 class Reflector(ServiceBase):
-    """Reflects Task state in Taskcluster based on the state of the
+    """Reflects Task state into Taskcluster based on the state of the
     Buildbot and BBB databases. Each task may be in one of the following
     states:
      * If takenUntil is unset and the BuildRequest is complete the task is
@@ -195,6 +211,9 @@ class Reflector(ServiceBase):
                 # taskcluster. Ideally, we'd watch Pulse for notification of
                 # this, but our version of Buildbot has a bug that causes it
                 # not to send those messages.
+                # TODO: This can race with build started events. If the reflector runs
+                # before the build started event is processed we'll cancel tasks that
+                # are actually running. FIXME!!!!
                 if buildrequest.complete:
                     log.info("BuildRequest disappeared before starting, cancelling task")
                     self.tc_queue.cancelTask(t.taskId)
@@ -222,14 +241,14 @@ class Reflector(ServiceBase):
 
                 log.info("BuildRequest is in progress, reclaiming")
                 try:
-                    result = self.tc_queue.reclaimTask(t.taskId, t.runId)
+                    result = self.tc_queue.reclaimTask(t.taskId, int(t.runId))
                     # Update our own db with the new claim time.
                     self.bbb_db.updateTakenUntil(t.buildrequestId, parseDateString(result["takenUntil"]))
                     log.info("Task %s now takenUntil %s", t.taskId, result['takenUntil'])
                 except TaskclusterRestFailure, e:
                     if e.superExc.response.status_code == 409:
                         # Conflict; it's expired
-                        log.warn("couldn't reclaim task %s: HTTP 409; deleting", t.taskId)
+                        log.exception("couldn't reclaim task %s: HTTP 409; deleting", t.taskId)
                         # TODO: probably should cancel the job in buildbot?
                         self.bbb_db.deleteBuildRequest(t.buildrequestId)
                     else:
@@ -291,8 +310,8 @@ class TCListener(ListenerService):
         else:
             log.info("Builder %s does not match any pattern, rejecting it", buildername)
             # malformed-payload is the most accurate TC status for this situation
-            # but we can't use reportException for cancelling - so this will show
-            # up as "cancelled" on TC.
+            # but we can't use reportException for cancelling pending tasks,
+            # so this will show up as "cancelled" on TC.
             self.tc_queue.cancelTask(taskid)
             # If this Task is already in our database, we should delete it
             # because the Task has been cancelled.
@@ -301,9 +320,12 @@ class TCListener(ListenerService):
                 self.bbb_db.deleteBuildRequest(our_task.buildrequestId)
             return
 
-        # If the task already exists in the BBB database we just need to
-        # update our runId. If we created a new BuildRequest for it we'd end
-        # up with an extra Build.
+        # When Buildbot Builds end up in a RETRY state they are automatically
+        # retried against the same BuildRequest. The BuildbotListener reflects
+        # this into Taskcluster be calling rerunTask, which creates a new Run
+        # for the same Task. In these cases, we don't want to do anything
+        # except update our own runId. If we created a new BuildRequest for it
+        # we'd end up with an extra Build.
         if our_task:
             self.bbb_db.updateRunId(our_task.buildrequestId, runid)
         # If the task doesn't exist we need to insert it into our database.
@@ -311,8 +333,8 @@ class TCListener(ListenerService):
         # as running. The BuildbotListener will take care of that when a slave
         # actually picks up the job.
         else:
-            brid = self.buildbot_db.injectTask(taskid, tc_task)
-            self.bbb_db.createTask(taskid, runid, brid, tc_task["created"])
+            brid = self.buildbot_db.injectTask(taskid, runid, tc_task)
+            self.bbb_db.createTask(taskid, runid, brid, parseDateString(tc_task["created"]))
 
     def handleException(self, data, msg):
         """Most exceptions from Taskcluster are ignoreable because they are

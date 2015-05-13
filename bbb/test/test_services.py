@@ -40,8 +40,8 @@ class TestBuildbotListener(unittest.TestCase):
     def testHandleStartedOneBuildRequest(self):
         self.buildbot_db.execute(sa.text("""
 INSERT INTO buildrequests
-    (id, buildsetid, buildername, submitted_at)
-    VALUES (4, 0, "foo", 50);"""))
+    (id, buildsetid, buildername, submitted_at, claimed_by_name, claimed_by_incarnation)
+    VALUES (4, 0, "foo", 50, "a", "b");"""))
         self.buildbot_db.execute(sa.text("""
 INSERT INTO builds
     (id, number, brid, start_time)
@@ -54,7 +54,18 @@ INSERT INTO builds
             processedDate=60,
             takenUntil=None
         )
-        data = {"payload": {"build": {"number": 2}}}
+        data = {
+            "payload": {
+                "build": {
+                    "number": 2,
+                    "builderName": "foo",
+                }
+            },
+            "_meta": {
+                "master_name": "a",
+                "master_incarnation": "b",
+            },
+        }
         self.bblistener.tc_queue.claimTask.return_value = {"takenUntil": 100}
         self.bblistener.handleStarted(data, Mock())
 
@@ -66,8 +77,8 @@ INSERT INTO builds
     def testHandleStartedMultipleBuildRequests(self):
         self.buildbot_db.execute(sa.text("""
 INSERT INTO buildrequests
-    (id, buildsetid, buildername, submitted_at)
-    VALUES (2, 0, "foo", 20), (3, 0, "foo", 30);"""))
+    (id, buildsetid, buildername, submitted_at, claimed_by_name, claimed_by_incarnation)
+    VALUES (2, 0, "foo", 20, "a", "b"), (3, 0, "foo", 30, "a", "b");"""))
         self.buildbot_db.execute(sa.text("""
 INSERT INTO builds
     (id, number, brid, start_time)
@@ -88,7 +99,18 @@ INSERT INTO builds
             processedDate=35,
             takenUntil=None
         )
-        data = {"payload": {"build": {"number": 3}}}
+        data = {
+            "payload": {
+                "build": {
+                    "number": 3,
+                    "builderName": "foo",
+                 }
+             },
+            "_meta": {
+                "master_name": "a",
+                "master_incarnation": "b",
+            },
+         }
         self.bblistener.tc_queue.claimTask.return_value = {"takenUntil": 80}
         self.bblistener.handleStarted(data, Mock())
 

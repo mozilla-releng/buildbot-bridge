@@ -20,7 +20,5 @@ setup(
         "kombu",
         "redo",
         "mysql-python",
-        "nose",
-        "mock"
     ],
 )

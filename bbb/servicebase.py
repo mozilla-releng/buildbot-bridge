@@ -1,5 +1,6 @@
 from collections import namedtuple
 import json
+import time
 
 import arrow
 from kombu import Connection, Queue, Exchange
@@ -16,7 +17,6 @@ log = logging.getLogger(__name__)
 ListenerServiceEvent = namedtuple("ListenerServiceEvent", ("exchange", "routing_key", "callback", "queue_name"))
 
 
-
 class SelfserveClient(object):
     def __init__(self, base_uri):
         self.base_uri = base_uri
@@ -30,10 +30,14 @@ class SelfserveClient(object):
         requests.delete(url)
 
 
+class TaskNotFound(Exception):
+    pass
+
+
 class BBBDb(object):
     """Wrapper object for creation of and access to Buildbot Bridge database."""
     def __init__(self, uri):
-        self.db = sa.create_engine(uri)
+        self.db = sa.create_engine(uri, pool_recycle=60)
         metadata = sa.MetaData(self.db)
         self.tasks_table = sa.Table('tasks', metadata,
             sa.Column('buildrequestId', sa.Integer, primary_key=True),
@@ -61,7 +65,7 @@ class BBBDb(object):
     def getTaskFromBuildRequest(self, brid):
         task = self.tasks_table.select(self.tasks_table.c.buildrequestId == brid).execute().fetchone()
         if not task:
-            raise ValueError("Couldn't find task for brid %i", brid)
+            raise TaskNotFound("Couldn't find task for brid %i", brid)
         return task
 
     def createTask(self, taskid, runid, brid, created_date):
@@ -91,16 +95,30 @@ class BBBDb(object):
 class BuildbotDb(object):
     """Wrapper object for access to preexisting Buildbot scheduler database."""
     def __init__(self, uri):
-        self.db = sa.create_engine(uri)
+        self.db = sa.create_engine(uri, pool_recycle=60)
 
     def getBuildRequest(self, brid):
         return self.db.execute(sa.text("select * from buildrequests where id=:brid"), brid=brid).fetchone()
 
-    def getBuildRequests(self, buildnumber):
-        return self.db.execute(
-            sa.text("select buildrequests.id from buildrequests join builds ON buildrequests.id=builds.brid where builds.number=:buildnumber"),
+    def getBuildRequests(self, buildnumber, buildername, claimed_by_name, claimed_by_incarnation):
+        now = time.time()
+        ret = self.db.execute(
+            # TODO: Using complete=0 sucks a bit. If builds complete before we process
+            # the build started event, this query doesn't work.
+            sa.text("""select buildrequests.id from buildrequests join builds
+                       ON buildrequests.id=builds.brid
+                       WHERE builds.number=:buildnumber
+                         AND buildrequests.complete=0
+                         AND buildrequests.buildername=:buildername
+                         AND buildrequests.claimed_by_name=:claimed_by_name
+                         AND buildrequests.claimed_by_incarnation=:claimed_by_incarnation"""),
             buildnumber=buildnumber,
+            buildername=buildername,
+            claimed_by_name=claimed_by_name,
+            claimed_by_incarnation=claimed_by_incarnation,
         ).fetchall()
+        log.debug("getBuildRequests Query took %f seconds", time.time() - now)
+        return ret
 
     def getBuilds(self, brid):
         return self.db.execute(sa.text("select * from builds where brid=:brid"), brid=brid).fetchall()
@@ -146,7 +164,7 @@ WHERE buildrequests.id=:brid""")
             self.db.execute(q, buildsetid=buildsetid, key=key, value=value)
             log.info("Created buildset_property %s=%s", key, value)
 
-    def injectTask(self, taskId, task):
+    def injectTask(self, taskid, runid, task):
         payload = task["payload"]
         # Create a sourcestamp if necessary
         sourcestamp = payload.get('sourcestamp', {})
@@ -164,8 +182,8 @@ WHERE buildrequests.id=:brid""")
         submitted_at = parseDateString(task['created'])
         r = self.db.execute(
             q,
-            idstring="taskId:{}".format(taskId),
-            reason="Created by BBB for task {0}".format(taskId),
+            idstring="taskId:{}".format(taskid),
+            reason="Created by BBB for task {0}".format(taskid),
             sourcestampid=sourcestampid,
             submitted_at=submitted_at,
         )
@@ -176,7 +194,8 @@ WHERE buildrequests.id=:brid""")
         # Create properties
         properties = payload.get('properties', {})
         # Always create a property for the taskId
-        properties['taskId'] = taskId
+        properties['taskId'] = taskid
+        properties['runId'] = runid
         self.createBuildSetProperties(buildsetid, properties)
 
         # Create the buildrequest
