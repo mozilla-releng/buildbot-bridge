@@ -60,6 +60,7 @@ def main():
             pulse_queue_basename=config["pulse_queue_basename"],
             pulse_exchange_basename=config["tclistener"]["pulse_exchange_basename"],
             worker_type=config["tclistener"]["worker_type"],
+            provisioner_id=config["tclistener"]["provisioner_id"],
             allowed_builders=config["tclistener"]["allowed_builders"],
             **kwargs
         )

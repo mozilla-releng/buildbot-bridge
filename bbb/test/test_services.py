@@ -347,6 +347,7 @@ class TestTCListener(unittest.TestCase):
             pulse_queue_basename="fake",
             pulse_exchange_basename="fake",
             worker_type="fake",
+            provisioner_id="fake",
             allowed_builders=(
                 ".*good.*",
             ),

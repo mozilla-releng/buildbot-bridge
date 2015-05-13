@@ -260,19 +260,19 @@ class TCListener(ListenerService):
     that needs to be watched."""
 
     def __init__(self, pulse_queue_basename, pulse_exchange_basename, worker_type,
-                 allowed_builders=(), *args, **kwargs):
+                 provisioner_id, allowed_builders=(), *args, **kwargs):
         self.allowed_builders = allowed_builders
         events = (
             ListenerServiceEvent(
                 queue_name="%s/task-pending" % pulse_queue_basename,
                 exchange="%s/task-pending" % pulse_exchange_basename,
-                routing_key="*.*.*.*.*.*.%s.#" % worker_type,
+                routing_key="*.*.*.*.*.%s.%s.#" % (provisioner_id, worker_type),
                 callback=self.handlePending,
             ),
             ListenerServiceEvent(
                 queue_name="%s/task-exception" % pulse_queue_basename,
                 exchange="%s/task-exception" % pulse_exchange_basename,
-                routing_key="*.*.*.*.*.*.%s.#" % worker_type,
+                routing_key="*.*.*.*.*.%s.%s.#" % (provisioner_id, worker_type),
                 callback=self.handleException,
             ),
         )
