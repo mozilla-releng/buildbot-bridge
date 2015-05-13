@@ -198,6 +198,9 @@ class Reflector(ServiceBase):
                 # taskcluster. Ideally, we'd watch Pulse for notification of
                 # this, but our version of Buildbot has a bug that causes it
                 # not to send those messages.
+                # TODO: This can race with build started events. If the reflector runs
+                # before the build started event is processed we'll cancel tasks that
+                # are actually running. FIXME!!!!
                 if buildrequest.complete:
                     log.info("BuildRequest disappeared before starting, cancelling task")
                     self.tc_queue.cancelTask(t.taskId)
