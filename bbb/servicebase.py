@@ -88,6 +88,8 @@ class BuildbotDb(object):
     def getBuildRequests(self, buildnumber, buildername, claimed_by_name, claimed_by_incarnation):
         now = time.time()
         ret = self.db.execute(
+            # TODO: Using complete=0 sucks a bit. If builds complete before we process
+            # the build started event, this query doesn't work.
             sa.text("""select buildrequests.id from buildrequests join builds
                        ON buildrequests.id=builds.brid
                        WHERE builds.number=:buildnumber
