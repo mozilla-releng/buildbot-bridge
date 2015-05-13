@@ -136,7 +136,13 @@ class BuildbotListener(ListenerService):
                 self.bbb_db.deleteBuildRequest(brid)
             elif results == RETRY:
                 log.info("Marking task %s as malformed payload exception and rerunning", taskid)
+                # TODO: can we use worker-shutdown instead of rerunTask here? We used malformed-payload
+                # before because TCListener didn't know how to skip build request creation for
+                # reruns....
+                # using worker-shutdown would probably be better for treeherder, because
+                # the buildbot and TC states would line up better.
                 self.tc_queue.reportException(taskid, runid, {"reason": "malformed-payload"})
+                # TODO: runid in buildbot properties is probably run for the rerun....is that fixable?
                 self.tc_queue.rerunTask(taskid)
             elif results == CANCELLED:
                 log.info("Marking task %s as cancelled", taskid)
@@ -192,6 +198,9 @@ class Reflector(ServiceBase):
                 # taskcluster. Ideally, we'd watch Pulse for notification of
                 # this, but our version of Buildbot has a bug that causes it
                 # not to send those messages.
+                # TODO: This can race with build started events. If the reflector runs
+                # before the build started event is processed we'll cancel tasks that
+                # are actually running. FIXME!!!!
                 if buildrequest.complete:
                     log.info("BuildRequest disappeared before starting, cancelling task")
                     self.tc_queue.cancelTask(t.taskId)
@@ -287,8 +296,8 @@ class TCListener(ListenerService):
         else:
             log.info("Builder %s does not match any pattern, rejecting it", buildername)
             # malformed-payload is the most accurate TC status for this situation
-            # but we can't use reportException for cancelling - so this will show
-            # up as "cancelled" on TC.
+            # but we can't use reportException for cancelling pending tasks,
+            # so this will show up as "cancelled" on TC.
             self.tc_queue.cancelTask(taskid)
             # If this Task is already in our database, we should delete it
             # because the Task has been cancelled.
@@ -297,9 +306,12 @@ class TCListener(ListenerService):
                 self.bbb_db.deleteBuildRequest(our_task.buildrequestId)
             return
 
-        # If the task already exists in the BBB database we just need to
-        # update our runId. If we created a new BuildRequest for it we'd end
-        # up with an extra Build.
+        # When Buildbot Builds end up in a RETRY state they are automatically
+        # retried against the same BuildRequest. The BuildbotListener reflects
+        # this into Taskcluster be calling rerunTask, which creates a new Run
+        # for the same Task. In these cases, we don't want to do anything
+        # except update our own runId. If we created a new BuildRequest for it
+        # we'd end up with an extra Build.
         if our_task:
             self.bbb_db.updateRunId(our_task.buildrequestId, runid)
         # If the task doesn't exist we need to insert it into our database.

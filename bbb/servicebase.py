@@ -88,11 +88,13 @@ class BuildbotDb(object):
 
     def getBuildRequests(self, buildnumber, buildername, claimed_by_name, claimed_by_incarnation):
         now = time.time()
-        # TODO: Speed this up. Sometimes takes upwards of 20 seconds.
         ret = self.db.execute(
+            # TODO: Using complete=0 sucks a bit. If builds complete before we process
+            # the build started event, this query doesn't work.
             sa.text("""select buildrequests.id from buildrequests join builds
                        ON buildrequests.id=builds.brid
                        WHERE builds.number=:buildnumber
+                         AND buildrequests.complete=0
                          AND buildrequests.buildername=:buildername
                          AND buildrequests.claimed_by_name=:claimed_by_name
                          AND buildrequests.claimed_by_incarnation=:claimed_by_incarnation"""),
