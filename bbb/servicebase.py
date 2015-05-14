@@ -29,7 +29,7 @@ class SelfserveClient(object):
         # background on this.
         url = "%s/%s" % (self.base_uri, url)
         log.debug("Making %s request to %s", method, url)
-        r = requests.request(method, url, headers={"REMOTE_USER": "buildbot-bridge"})
+        r = requests.request(method, url, headers={"X-Remote-User": "buildbot-bridge"})
         # TODO: should we raise here? Maybe return the return code so the consumer
         # can do something better.
         try:
