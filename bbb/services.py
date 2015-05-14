@@ -371,7 +371,10 @@ class TCListener(ListenerService):
                 return
             brid = our_task.buildrequestId
             builds = self.buildbot_db.getBuilds(brid)
-            branch = self.buildbot_db.getBranch(brid)
+            # The branch in the Buildbot database is the path on the hg server
+            # relative to the root. Self serve needs the "short" branch name,
+            # which is the last part of the path.
+            branch = self.buildbot_db.getBranch(brid).split("/")[-1]
 
             # If there's already a Build running for the task, kill it!
             # We need to use selfserve for this because it has special magic
