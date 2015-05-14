@@ -5,6 +5,7 @@ import time
 import arrow
 from kombu import Connection, Queue, Exchange
 import requests
+from requests.exceptions import RequestException
 import sqlalchemy as sa
 import taskcluster
 
