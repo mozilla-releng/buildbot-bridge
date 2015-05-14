@@ -21,13 +21,23 @@ class SelfserveClient(object):
     def __init__(self, base_uri):
         self.base_uri = base_uri
 
+    def _do_request(self, method, url):
+        # The private BuildAPI interface we use doesn't require auth but it
+        # _does_ require REMOTE_USER to be set.
+        # https://bugzilla.mozilla.org/show_bug.cgi?id=1156810 has additional
+        # background on this.
+        r = requests.request(method, url, headers={"REMOTE_USER": "buildbot-bridge")
+        # TODO: should we raise here? Maybe return the return code so the consumer
+        # can do something better.
+        r.raise_for_status()
+
     def cancelBuild(self, branch, id_):
         url = "%s/build/%s" % (branch, id_)
-        requests.delete(url)
+        requests.delete(url).raise_for_status()
 
     def cancelBuildRequest(self, branch, brid):
         url = "%s/request/%s" % (branch, brid)
-        requests.delete(url)
+        requests.delete(url).raise_for_status()
 
 
 class TaskNotFound(Exception):
