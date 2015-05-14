@@ -38,11 +38,11 @@ class SelfserveClient(object):
 
     def cancelBuild(self, branch, id_):
         url = "%s/build/%s" % (branch, id_)
-        requests.delete(url).raise_for_status()
+        self._do_request("DELETE", url)
 
     def cancelBuildRequest(self, branch, brid):
         url = "%s/request/%s" % (branch, brid)
-        requests.delete(url).raise_for_status()
+        self._do_request("DELETE", url)
 
 
 class TaskNotFound(Exception):
