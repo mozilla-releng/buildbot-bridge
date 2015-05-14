@@ -26,6 +26,7 @@ class SelfserveClient(object):
         # _does_ require REMOTE_USER to be set.
         # https://bugzilla.mozilla.org/show_bug.cgi?id=1156810 has additional
         # background on this.
+        url = "%s/%s" % (self.base_uri, url)
         r = requests.request(method, url, headers={"REMOTE_USER": "buildbot-bridge"})
         # TODO: should we raise here? Maybe return the return code so the consumer
         # can do something better.
