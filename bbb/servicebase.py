@@ -27,10 +27,14 @@ class SelfserveClient(object):
         # https://bugzilla.mozilla.org/show_bug.cgi?id=1156810 has additional
         # background on this.
         url = "%s/%s" % (self.base_uri, url)
+        log.debug("Making %s request to %s", method, url)
         r = requests.request(method, url, headers={"REMOTE_USER": "buildbot-bridge"})
         # TODO: should we raise here? Maybe return the return code so the consumer
         # can do something better.
-        r.raise_for_status()
+        try:
+            r.raise_for_status()
+        except RequestException:
+            log.exception("Caught exception:")
 
     def cancelBuild(self, branch, id_):
         url = "%s/build/%s" % (branch, id_)

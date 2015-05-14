@@ -77,8 +77,6 @@ def main():
     signal(SIGTERM, handle_sigterm)
 
     log.info("Running %s service", args.service[0])
-    # TODO: If we're not going to run with supervisor or something similar,
-    # this should probably daemonize instead.
     try:
         service.start()
     except KeyboardInterrupt:
