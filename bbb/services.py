@@ -233,7 +233,7 @@ class Reflector(ServiceBase):
                 # which is very spammy in the logs and adds unnecessary load to
                 # Taskcluster.
                 if arrow.now() > arrow.get(t.takenUntil).replace(minutes=-5):
-                    log.info("Claim for BuildRequest %s is more than 5min old, reclaiming", t.buildrequestId)
+                    log.info("Claim for BuildRequest %s will expire in less than 5min, reclaiming", t.buildrequestId)
                     try:
                         result = self.tc_queue.reclaimTask(t.taskId, int(t.runId))
                         # Update our own db with the new claim time.
