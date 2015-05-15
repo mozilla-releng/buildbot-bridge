@@ -115,7 +115,7 @@ class BuildbotListener(ListenerService):
             # Attach properties as artifacts
             log.info("Attaching properties to task %s", taskid)
             expires = arrow.now().replace(weeks=1).isoformat()
-            createJsonArtifact(self.tc_queue, taskid, runid, "properties.json", properties, expires)
+            createJsonArtifact(self.tc_queue, taskid, runid, "public/properties.json", properties, expires)
 
             log.info("Buildbot results are %s", results)
             if results == SUCCESS:
