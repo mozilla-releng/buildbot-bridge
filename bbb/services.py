@@ -115,7 +115,7 @@ class BuildbotListener(ListenerService):
             # Attach properties as artifacts
             log.info("Attaching properties to task %s", taskid)
             expires = arrow.now().replace(weeks=1).isoformat()
-            createJsonArtifact(self.tc_queue, taskid, runid, "properties.json", properties, expires)
+            createJsonArtifact(self.tc_queue, taskid, runid, "public/properties.json", properties, expires)
 
             log.info("Buildbot results are %s", results)
             if results == SUCCESS:
@@ -142,7 +142,8 @@ class BuildbotListener(ListenerService):
                 # using worker-shutdown would probably be better for treeherder, because
                 # the buildbot and TC states would line up better.
                 self.tc_queue.reportException(taskid, runid, {"reason": "malformed-payload"})
-                # TODO: runid in buildbot properties is probably run for the rerun....is that fixable?
+                # TODO: runid might be wrong for the rerun for a period of time because we don't update it
+                # until the TCListener gets the task-pending event. Maybe we should update it here too/instead?
                 self.tc_queue.rerunTask(taskid)
             elif results == CANCELLED:
                 # We could end up in this block for two different reasons:
@@ -246,7 +247,7 @@ class Reflector(ServiceBase):
                 # which is very spammy in the logs and adds unnecessary load to
                 # Taskcluster.
                 if arrow.now() > arrow.get(t.takenUntil).replace(minutes=-5):
-                    log.info("Claim for BuildRequest %s is more than 5min old, reclaiming", t.buildrequestId)
+                    log.info("Claim for BuildRequest %s will expire in less than 5min, reclaiming", t.buildrequestId)
                     try:
                         result = self.tc_queue.reclaimTask(t.taskId, int(t.runId))
                         # Update our own db with the new claim time.
