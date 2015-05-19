@@ -169,7 +169,6 @@ class BuildbotDb(object):
         properties = payload.get('properties', {})
         # Always create a property for the taskId
         properties['taskId'] = taskid
-        properties['runId'] = runid
         self.createBuildSetProperties(buildsetid, properties)
 
         # Create the buildrequest
