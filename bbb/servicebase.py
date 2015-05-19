@@ -22,7 +22,7 @@ class TaskNotFound(Exception):
 class BBBDb(object):
     """Wrapper object for creation of and access to Buildbot Bridge database."""
     def __init__(self, uri):
-        self.db = sa.create_engine(uri, pool_recycle=60)
+        self.db = sa.create_engine(uri, pool_size=1, pool_recycle=60)
         metadata = sa.MetaData(self.db)
         self.tasks_table = sa.Table('tasks', metadata,
             sa.Column('buildrequestId', sa.Integer, primary_key=True),
@@ -80,7 +80,7 @@ class BBBDb(object):
 class BuildbotDb(object):
     """Wrapper object for access to preexisting Buildbot scheduler database."""
     def __init__(self, uri):
-        self.db = sa.create_engine(uri, pool_recycle=60)
+        self.db = sa.create_engine(uri, pool_size=1, pool_recycle=60)
 
     def getBuildRequest(self, brid):
         return self.db.execute(sa.text("select * from buildrequests where id=:brid"), brid=brid).fetchone()
