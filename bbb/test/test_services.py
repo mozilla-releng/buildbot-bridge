@@ -506,10 +506,6 @@ INSERT INTO buildrequests
     (id, buildsetid, buildername, submitted_at)
     VALUES (0, 0, "good", 5);
 """))
-        self.buildbot_db.execute(sa.text("""
-INSERT INTO builds
-    (id, number, brid, start_time)
-    VALUES (0, 0, 0, 40);"""))
         self.tasks.insert().execute(
             buildrequestId=0,
             taskId=taskid,
