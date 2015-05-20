@@ -256,8 +256,7 @@ class ListenerService(ServiceBase):
             hostname=self.pulse_host,
             userid=self.pulse_user,
             password=self.pulse_password,
-            # TODO: should be true
-            ssl=False,
+            ssl=True,
         )
         consumers = []
         for event in self.events:
