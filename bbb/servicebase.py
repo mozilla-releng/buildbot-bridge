@@ -257,6 +257,8 @@ class ListenerService(ServiceBase):
             userid=self.pulse_user,
             password=self.pulse_password,
             ssl=True,
+            # Kombu doesn't support the port correctly for amqp with ssl...
+            port=5671,
         )
         consumers = []
         for event in self.events:
