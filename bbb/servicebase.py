@@ -175,7 +175,7 @@ class BuildbotDb(object):
         q = sa.text("""
             INSERT INTO
                 buildsets (`external_idstring`, `reason`, `sourcestampid`,
-                        `submitted_at`, `complete`, `complete_at`, `results`)
+                           `submitted_at`, `complete`, `complete_at`, `results`)
             VALUES
                 (:idstring, :reason, :sourcestampid, :submitted_at, 0, NULL, NULL)
         """)
