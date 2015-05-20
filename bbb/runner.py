@@ -13,7 +13,7 @@ def main():
     )
     parser.add_argument("-v", "--verbose", dest="loglevel", action="store_const", const=logging.DEBUG)
     parser.add_argument("-q", "--quiet", dest="loglevel", action="store_const", const=logging.WARN)
-    parser.add_argument("-c", "--config", dest="config", required=True)
+    parser.add_argument("-c", "--config", dest="config", default="config.ini", required=True)
     parser.add_argument("service", nargs=1, choices=["bblistener", "reflector", "tclistener"])
 
     args = parser.parse_args()

@@ -92,7 +92,7 @@ class BuildbotDb(object):
             self.db = sa.create_engine(uri, pool_recycle=60)
 
     def isBuildRequestComplete(self, brid):
-        return bool(self.db.execute(sa.text("SELECT complete FROM buildrequests where id=:brid"), brid=brid).fetchone()[0])
+        return bool(self.db.execute(sa.text("SELECT complete FROM buildrequests WHERE id=:brid"), brid=brid).fetchone()[0])
 
     def getBuildRequests(self, buildnumber, buildername, claimed_by_name, claimed_by_incarnation):
         now = time.time()
