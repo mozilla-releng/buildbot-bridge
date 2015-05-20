@@ -101,7 +101,7 @@ class BuildbotDb(object):
                 id=:brid
             """),
             brid=brid
-        ).fetchone()[0]
+        ).fetchall()[0]
         return bool(ret)
 
     def getBuildRequests(self, buildnumber, buildername, claimed_by_name, claimed_by_incarnation):
@@ -130,7 +130,7 @@ class BuildbotDb(object):
         return ret
 
     def getBuildsCount(self, brid):
-        return self.db.execute(sa.text("SELECT COUNT(*) FROM builds WHERE brid=:brid"), brid=brid).fetchone()[0]
+        return self.db.execute(sa.text("SELECT COUNT(*) FROM builds WHERE brid=:brid"), brid=brid).fetchall()[0]
 
     def createSourceStamp(self, sourcestamp={}):
         q = sa.text("""
