@@ -21,9 +21,11 @@ class BuildbotListener(ListenerService):
      * Build started (build.$builder.$buildnum.started)
      * Build finished (build.$builder.$buildnum.log_uploaded)
     """
-    def __init__(self, tc_worker_group, tc_worker_id, pulse_queue_basename, pulse_exchange, *args, **kwargs):
+    def __init__(self, tc_worker_group, tc_worker_id, pulse_queue_basename, pulse_exchange,
+                 allowed_builders=(), *args, **kwargs):
         self.tc_worker_group = tc_worker_group
         self.tc_worker_id = tc_worker_id
+        self.allowed_builders = allowed_builders
         events = (
             ListenerServiceEvent(
                 queue_name="%s/started" % pulse_queue_basename,
@@ -54,11 +56,20 @@ class BuildbotListener(ListenerService):
         master = data["_meta"]["master_name"]
         incarnation = data["_meta"]["master_incarnation"]
         for brid in self.buildbot_db.getBuildRequests(buildnumber, buildername, master, incarnation):
+            for allowed in self.allowed_builders:
+                if re.match(allowed, buildername):
+                    log.debug("Builder %s matches an allowed pattern", buildername)
+                    break
+            else:
+                log.debug("Builder %s does not match any pattern, ignoring it", buildername)
+                continue
+
             brid = brid[0]
             try:
                 task = self.bbb_db.getTaskFromBuildRequest(brid)
             except TaskNotFound:
-                log.debug("Task not found for brid %s, nothing to do.", brid)
+                # TODO: will this still be weird after we have a reverse bridge?
+                log.warning("WEIRD: Task not found for brid %s, nothing to do.", brid)
                 continue
             log.info("Claiming %s", task.taskId)
             # Taskcluster requires runId to be an int, but it comes to us as a long.
@@ -100,14 +111,24 @@ class BuildbotListener(ListenerService):
             log.error("Couldn't find job results")
             return
 
+        buildername = data["payload"]["build"]["builderName"]
+
         # For each request, get the taskId and runId
         for brid in request_ids[0]:
+            for allowed in self.allowed_builders:
+                if re.match(allowed, buildername):
+                    log.debug("Builder %s matches an allowed pattern", buildername)
+                    break
+            else:
+                log.debug("Builder %s does not match any pattern, ignoring it", buildername)
+                continue
+
             try:
                 task = self.bbb_db.getTaskFromBuildRequest(brid)
                 taskid = task.taskId
                 runid = int(task.runId)
             except TaskNotFound:
-                log.debug("Task not found for brid %s, nothing to do.", brid)
+                log.warning("WEIRD: Task not found for brid %s, nothing to do.", brid)
                 continue
 
             log.debug("brid %i : taskId %s : runId %i", brid, taskid, runid)

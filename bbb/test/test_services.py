@@ -28,6 +28,9 @@ class TestBuildbotListener(unittest.TestCase):
             pulse_exchange="fake",
             tc_worker_group="workwork",
             tc_worker_id="workwork",
+            allowed_builders=(
+                ".*good.*",
+            ),
         )
         makeSchedulerDb(self.bblistener.buildbot_db.db)
         # Replace the TaskCluster Queue object with a Mock because we never
@@ -41,7 +44,7 @@ class TestBuildbotListener(unittest.TestCase):
         self.buildbot_db.execute(sa.text("""
 INSERT INTO buildrequests
     (id, buildsetid, buildername, submitted_at, claimed_by_name, claimed_by_incarnation)
-    VALUES (4, 0, "foo", 50, "a", "b");"""))
+    VALUES (4, 0, "good", 50, "a", "b");"""))
         self.buildbot_db.execute(sa.text("""
 INSERT INTO builds
     (id, number, brid, start_time)
@@ -58,7 +61,7 @@ INSERT INTO builds
             "payload": {
                 "build": {
                     "number": 2,
-                    "builderName": "foo",
+                    "builderName": "good",
                 }
             },
             "_meta": {
@@ -78,7 +81,7 @@ INSERT INTO builds
         self.buildbot_db.execute(sa.text("""
 INSERT INTO buildrequests
     (id, buildsetid, buildername, submitted_at, claimed_by_name, claimed_by_incarnation)
-    VALUES (2, 0, "foo", 20, "a", "b"), (3, 0, "foo", 30, "a", "b");"""))
+    VALUES (2, 0, "good", 20, "a", "b"), (3, 0, "good", 30, "a", "b");"""))
         self.buildbot_db.execute(sa.text("""
 INSERT INTO builds
     (id, number, brid, start_time)
@@ -103,7 +106,7 @@ INSERT INTO builds
             "payload": {
                 "build": {
                     "number": 3,
-                    "builderName": "foo",
+                    "builderName": "good",
                  }
              },
             "_meta": {
@@ -120,6 +123,32 @@ INSERT INTO builds
         self.assertEquals(bbb_state[0].takenUntil, 80)
         self.assertEquals(bbb_state[1].takenUntil, 80)
 
+    def testHandleStartedIgnoredBuilder(self):
+        self.buildbot_db.execute(sa.text("""
+INSERT INTO buildrequests
+    (id, buildsetid, buildername, submitted_at, claimed_by_name, claimed_by_incarnation)
+    VALUES (4, 0, "bad", 50, "a", "b");"""))
+        self.buildbot_db.execute(sa.text("""
+INSERT INTO builds
+    (id, number, brid, start_time)
+    VALUES (0, 2, 4, 60);"""))
+
+        data = {
+            "payload": {
+                "build": {
+                    "number": 2,
+                    "builderName": "bad",
+                }
+            },
+            "_meta": {
+                "master_name": "a",
+                "master_incarnation": "b",
+            },
+        }
+        self.bblistener.handleStarted(data, Mock())
+
+        self.assertEquals(self.bblistener.tc_queue.claimTask.call_count, 0)
+
     # TODO: tests for some error cases, like failing to contact TC, or maybe db operations failing
 
     # Passing new=Mock prevents patch from passing the patched object,
@@ -129,7 +158,7 @@ INSERT INTO builds
         self.buildbot_db.execute(sa.text("""
 INSERT INTO buildrequests
     (id, buildsetid, buildername, submitted_at, complete, complete_at, results)
-    VALUES (1, 0, "foo", 5, 1, 30, 0);"""))
+    VALUES (1, 0, "good", 5, 1, 30, 0);"""))
         self.buildbot_db.execute(sa.text("""
 INSERT INTO builds
     (id, number, brid, start_time, finish_time)
@@ -144,6 +173,7 @@ INSERT INTO builds
         )
 
         data = {"payload": {"build": {
+            "builderName": "good",
             "properties": (
                 ("request_ids", (1,), "postrun.py"),
             ),
@@ -202,6 +232,31 @@ INSERT INTO builds
         self.assertEquals(self.bblistener.tc_queue.cancelTask.call_count, 1)
         # Build and Task are done - should be deleted from our db.
         self.assertEquals(self.tasks.count().execute().fetchone()[0], 0)
+
+    def testHandleFinishedIgnoredBuilder(self):
+        self.buildbot_db.execute(sa.text("""
+INSERT INTO buildrequests
+    (id, buildsetid, buildername, submitted_at, complete, complete_at, results)
+    VALUES (1, 0, "bad", 5, 1, 30, 0);"""))
+        self.buildbot_db.execute(sa.text("""
+INSERT INTO builds
+    (id, number, brid, start_time, finish_time)
+    VALUES (0, 0, 1, 15, 30);"""))
+
+        data = {"payload": {"build": {
+            "builderName": "bad",
+            "properties": (
+                ("request_ids", (1,), "postrun.py"),
+            ),
+            "results": SUCCESS,
+        }}}
+        self.bblistener.handleFinished(data, Mock())
+
+        self.assertEquals(self.bblistener.tc_queue.createArtifact.call_count, 0)
+        self.assertEquals(self.bblistener.tc_queue.cancelTask.call_count, 0)
+        self.assertEquals(self.bblistener.tc_queue.reportException.call_count, 0)
+        self.assertEquals(self.bblistener.tc_queue.reportFailed.call_count, 0)
+        self.assertEquals(self.bblistener.tc_queue.reportCompleted.call_count, 0)
 
 
 class TestReflector(unittest.TestCase):

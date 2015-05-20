@@ -45,6 +45,7 @@ def main():
             pulse_exchange=config["bblistener"]["pulse_exchange"],
             tc_worker_group=config["bblistener"]["tc_worker_group"],
             tc_worker_id=config["bblistener"]["tc_worker_id"],
+            allowed_builders=config["allowed_builders"],
             **kwargs
         )
     elif args.service[0] == "reflector":
@@ -61,7 +62,7 @@ def main():
             pulse_exchange_basename=config["tclistener"]["pulse_exchange_basename"],
             worker_type=config["tclistener"]["worker_type"],
             provisioner_id=config["tclistener"]["provisioner_id"],
-            allowed_builders=config["tclistener"]["allowed_builders"],
+            allowed_builders=config["allowed_builders"],
             **kwargs
         )
     else:
