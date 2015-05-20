@@ -142,7 +142,8 @@ class BuildbotListener(ListenerService):
                 # using worker-shutdown would probably be better for treeherder, because
                 # the buildbot and TC states would line up better.
                 self.tc_queue.reportException(taskid, runid, {"reason": "malformed-payload"})
-                # TODO: runid in buildbot properties is probably run for the rerun....is that fixable?
+                # TODO: runid might be wrong for the rerun for a period of time because we don't update it
+                # until the TCListener gets the task-pending event. Maybe we should update it here too/instead?
                 self.tc_queue.rerunTask(taskid)
             elif results == CANCELLED:
                 log.info("Marking task %s as cancelled", taskid)

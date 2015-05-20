@@ -169,7 +169,6 @@ class BuildbotDb(object):
         properties = payload.get('properties', {})
         # Always create a property for the taskId
         properties['taskId'] = taskid
-        properties['runId'] = runid
         self.createBuildSetProperties(buildsetid, properties)
 
         # Create the buildrequest
@@ -227,8 +226,7 @@ class ListenerService(ServiceBase):
             hostname=self.pulse_host,
             userid=self.pulse_user,
             password=self.pulse_password,
-            # TODO: should be true
-            ssl=False,
+            ssl=True,
         )
         consumers = []
         for event in self.events:
