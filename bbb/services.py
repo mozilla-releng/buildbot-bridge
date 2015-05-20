@@ -94,21 +94,23 @@ class BuildbotListener(ListenerService):
         try:
             properties = dict((key, (value, source)) for (key, value, source) in data["payload"]["build"]["properties"])
         except KeyError:
-            log.error("Couldn't get job properties")
+            log.error("Couldn't parse job properties from %s , can't proceed", data["payload"]["build"]["properties"])
             return
 
         request_ids = properties.get("request_ids")
         if not request_ids:
-            log.error("Couldn't get request ids from %s", data)
+            log.error("Couldn't get request ids from %s, can't proceed", data)
             return
 
         # Sanity check
-        assert request_ids[1] == "postrun.py"
+        if request_ids[1] != "postrun.py":
+            log.error("WEIRD: Finished event doesn't appear to come from postrun.py, bailing...")
+            return
 
         try:
             results = data["payload"]["build"]["results"]
         except KeyError:
-            log.error("Couldn't find job results")
+            log.error("Couldn't find job results from %s, can't proceed", data["payload"]["build"]["results"])
             return
 
         buildername = data["payload"]["build"]["builderName"]
