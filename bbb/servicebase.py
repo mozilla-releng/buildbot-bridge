@@ -82,21 +82,23 @@ class BuildbotDb(object):
     def __init__(self, uri):
         self.db = sa.create_engine(uri, pool_recycle=60)
 
-    def getBuildRequest(self, brid):
-        return self.db.execute(sa.text("select * from buildrequests where id=:brid"), brid=brid).fetchone()
+    def isBuildRequestComplete(self, brid):
+        return bool(self.db.execute(sa.text("SELECT complete FROM buildrequests where id=:brid"), brid=brid).fetchone()[0])
 
     def getBuildRequests(self, buildnumber, buildername, claimed_by_name, claimed_by_incarnation):
         now = time.time()
         ret = self.db.execute(
             # TODO: Using complete=0 sucks a bit. If builds complete before we process
             # the build started event, this query doesn't work.
-            sa.text("""select buildrequests.id from buildrequests join builds
-                       ON buildrequests.id=builds.brid
-                       WHERE builds.number=:buildnumber
-                         AND buildrequests.complete=0
-                         AND buildrequests.buildername=:buildername
-                         AND buildrequests.claimed_by_name=:claimed_by_name
-                         AND buildrequests.claimed_by_incarnation=:claimed_by_incarnation"""),
+            sa.text("""
+                    SELECT buildrequests.id FROM buildrequests JOIN builds
+                    ON buildrequests.id=builds.brid
+                    WHERE builds.number=:buildnumber
+                    AND buildrequests.complete=0
+                    AND buildrequests.buildername=:buildername
+                    AND buildrequests.claimed_by_name=:claimed_by_name
+                    AND buildrequests.claimed_by_incarnation=:claimed_by_incarnation
+            """),
             buildnumber=buildnumber,
             buildername=buildername,
             claimed_by_name=claimed_by_name,
@@ -105,8 +107,8 @@ class BuildbotDb(object):
         log.debug("getBuildRequests Query took %f seconds", time.time() - now)
         return ret
 
-    def getBuilds(self, brid):
-        return self.db.execute(sa.text("select * from builds where brid=:brid"), brid=brid).fetchall()
+    def getBuildsCount(self, brid):
+        return self.db.execute(sa.text("SELECT COUNT(*) FROM builds WHERE brid=:brid"), brid=brid).fetchone()[0]
 
     def createSourceStamp(self, sourcestamp={}):
         q = sa.text("""INSERT INTO sourcestamps

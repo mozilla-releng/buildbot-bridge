@@ -186,10 +186,13 @@ class Reflector(ServiceBase):
         # are processed even if one hit an exception.
         for t in self.bbb_db.tasks:
             log.info("Processing task: %s", t.taskId)
-            buildrequest = self.buildbot_db.getBuildRequest(t.buildrequestId)
-            builds = self.buildbot_db.getBuilds(t.buildrequestId)
+            complete = self.buildbot_db.isBuildRequestComplete(t.buildrequestId)
+            nBuilds = self.buildbot_db.getBuildsCount(t.buildrequestId)
             log.debug("Task info: %s", t)
-            log.debug("BuildRequest: %s", buildrequest)
+            if complete:
+                log.debug("BuildRequest %s is complete", t.buildrequestId)
+            else:
+                log.debug("BuildRequest %s is NOT complete", t.buildrequestId)
 
             # If takenUntil isn't set, this task has either never been claimed
             # or got cancelled.
@@ -202,7 +205,7 @@ class Reflector(ServiceBase):
                 # TODO: This can race with build started events. If the reflector runs
                 # before the build started event is processed we'll cancel tasks that
                 # are actually running. FIXME!!!!
-                if buildrequest.complete:
+                if complete:
                     log.info("BuildRequest disappeared before starting, cancelling task")
                     self.tc_queue.cancelTask(t.taskId)
                     self.bbb_db.deleteBuildRequest(t.buildrequestId)
@@ -215,7 +218,7 @@ class Reflector(ServiceBase):
             # BuildRequest is complete, but hasn't been reaped yet. We should
             # continue claiming this task for now, but the BBListener should
             # come along and get rid of it soon.
-            elif buildrequest.complete:
+            elif complete:
                 log.info("BuildRequest %i is done. BBListener should process it soon, reclaiming in the meantime", t.buildrequestId)
                 # TODO: RECLAIM!
                 continue
@@ -224,8 +227,8 @@ class Reflector(ServiceBase):
             # We need to renew the claim to make sure Taskcluster doesn't
             # expire it on us.
             else:
-                if len(builds) > t.runId + 1:
-                    log.warn("Too many buildbot builds? runId is %i but we have %i builds", t.runId, len(builds))
+                if nBuilds > t.runId + 1:
+                    log.warn("Too many buildbot builds? runId is %i but we have %i builds", t.runId, nBuilds)
 
                 log.debug("BuildRequest %s is in progress", t.buildrequestId)
                 # Reclaiming should only happen if we're less than 5 minutes
