@@ -115,7 +115,7 @@ class BuildbotListener(ListenerService):
             # Attach properties as artifacts
             log.info("Attaching properties to task %s", taskid)
             expires = arrow.now().replace(weeks=1).isoformat()
-            createJsonArtifact(self.tc_queue, taskid, runid, "properties.json", properties, expires)
+            createJsonArtifact(self.tc_queue, taskid, runid, "public/properties.json", properties, expires)
 
             log.info("Buildbot results are %s", results)
             if results == SUCCESS:
@@ -142,7 +142,8 @@ class BuildbotListener(ListenerService):
                 # using worker-shutdown would probably be better for treeherder, because
                 # the buildbot and TC states would line up better.
                 self.tc_queue.reportException(taskid, runid, {"reason": "malformed-payload"})
-                # TODO: runid in buildbot properties is probably run for the rerun....is that fixable?
+                # TODO: runid might be wrong for the rerun for a period of time because we don't update it
+                # until the TCListener gets the task-pending event. Maybe we should update it here too/instead?
                 self.tc_queue.rerunTask(taskid)
             elif results == CANCELLED:
                 log.info("Marking task %s as cancelled", taskid)
@@ -226,20 +227,27 @@ class Reflector(ServiceBase):
                 if len(builds) > t.runId + 1:
                     log.warn("Too many buildbot builds? runId is %i but we have %i builds", t.runId, len(builds))
 
-                log.info("BuildRequest is in progress, reclaiming")
-                try:
-                    result = self.tc_queue.reclaimTask(t.taskId, int(t.runId))
-                    # Update our own db with the new claim time.
-                    self.bbb_db.updateTakenUntil(t.buildrequestId, parseDateString(result["takenUntil"]))
-                    log.info("Task %s now takenUntil %s", t.taskId, result['takenUntil'])
-                except TaskclusterRestFailure, e:
-                    if e.superExc.response.status_code == 409:
-                        # Conflict; it's expired
-                        log.exception("couldn't reclaim task %s: HTTP 409; deleting", t.taskId)
-                        # TODO: probably should cancel the job in buildbot?
-                        self.bbb_db.deleteBuildRequest(t.buildrequestId)
-                    else:
-                        log.error("Couldn't reclaim task: %s", e.superExc)
+                log.debug("BuildRequest %s is in progress", t.buildrequestId)
+                # Reclaiming should only happen if we're less than 5 minutes
+                # away from the current claim expiring. Without this, every
+                # instance of the Reflector will reclaim each time it runs,
+                # which is very spammy in the logs and adds unnecessary load to
+                # Taskcluster.
+                if arrow.now() > arrow.get(t.takenUntil).replace(minutes=-5):
+                    log.info("Claim for BuildRequest %s will expire in less than 5min, reclaiming", t.buildrequestId)
+                    try:
+                        result = self.tc_queue.reclaimTask(t.taskId, int(t.runId))
+                        # Update our own db with the new claim time.
+                        self.bbb_db.updateTakenUntil(t.buildrequestId, parseDateString(result["takenUntil"]))
+                        log.info("Task %s now takenUntil %s", t.taskId, result['takenUntil'])
+                    except TaskclusterRestFailure, e:
+                        if e.superExc.response.status_code == 409:
+                            # Conflict; it's expired
+                            log.exception("couldn't reclaim task %s: HTTP 409; deleting", t.taskId)
+                            # TODO: probably should cancel the job in buildbot?
+                            self.bbb_db.deleteBuildRequest(t.buildrequestId)
+                        else:
+                            log.error("Couldn't reclaim task: %s", e.superExc)
 
 
 class TCListener(ListenerService):
@@ -253,19 +261,19 @@ class TCListener(ListenerService):
     that needs to be watched."""
 
     def __init__(self, pulse_queue_basename, pulse_exchange_basename, worker_type,
-                 allowed_builders=(), *args, **kwargs):
+                 provisioner_id, allowed_builders=(), *args, **kwargs):
         self.allowed_builders = allowed_builders
         events = (
             ListenerServiceEvent(
                 queue_name="%s/task-pending" % pulse_queue_basename,
                 exchange="%s/task-pending" % pulse_exchange_basename,
-                routing_key="*.*.*.*.*.*.%s.#" % worker_type,
+                routing_key="*.*.*.*.*.%s.%s.#" % (provisioner_id, worker_type),
                 callback=self.handlePending,
             ),
             ListenerServiceEvent(
                 queue_name="%s/task-exception" % pulse_queue_basename,
                 exchange="%s/task-exception" % pulse_exchange_basename,
-                routing_key="*.*.*.*.*.*.%s.#" % worker_type,
+                routing_key="*.*.*.*.*.%s.%s.#" % (provisioner_id, worker_type),
                 callback=self.handleException,
             ),
         )

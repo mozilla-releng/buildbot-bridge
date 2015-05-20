@@ -1,7 +1,7 @@
 from mock import Mock, patch
 import unittest
 
-from arrow import Arrow
+import arrow
 import sqlalchemy as sa
 
 from .dbutils import makeSchedulerDb
@@ -225,7 +225,8 @@ class TestReflector(unittest.TestCase):
         self.tasks = self.reflector.bbb_db.tasks_table
         self.buildbot_db = self.reflector.buildbot_db.db
 
-    def testReclaimRunningTask(self):
+    @patch("arrow.now")
+    def testReclaimRunningTask(self, fake_now):
         taskid = makeTaskId()
         self.buildbot_db.execute(sa.text("""
 INSERT INTO buildrequests
@@ -241,13 +242,41 @@ INSERT INTO buildrequests
             takenUntil=200,
         )
 
-        self.reflector.tc_queue.reclaimTask.return_value = {"takenUntil": 300}
+        fake_now.return_value = arrow.get(150)
+        self.reflector.tc_queue.reclaimTask.return_value = {"takenUntil": 1000}
         self.reflector.reflectTasks()
 
         self.assertEquals(self.reflector.tc_queue.reclaimTask.call_count, 1)
         bbb_state = self.tasks.select().execute().fetchall()
         self.assertEquals(len(bbb_state), 1)
-        self.assertEquals(bbb_state[0].takenUntil, 300)
+        self.assertEquals(bbb_state[0].takenUntil, 1000)
+
+    @patch("arrow.now")
+    def testDontReclaimTaskTooSoon(self, fake_now):
+        taskid = makeTaskId()
+        self.buildbot_db.execute(sa.text("""
+INSERT INTO buildrequests
+    (id, buildsetid, buildername, submitted_at)
+    VALUES (2, 0, "foo", 15);
+"""))
+        self.tasks.insert().execute(
+            buildrequestId=2,
+            taskId=taskid,
+            runId=0,
+            createdDate=12,
+            processedDate=17,
+            takenUntil=1000,
+        )
+
+        # Because we're testing that reclaims don't happen too soon, we need
+        # to make sure "now" is within 5 minutes of the takenUntil time.
+        fake_now.return_value = arrow.get(500)
+        self.reflector.reflectTasks()
+
+        self.assertEquals(self.reflector.tc_queue.reclaimTask.call_count, 0)
+        bbb_state = self.tasks.select().execute().fetchall()
+        self.assertEquals(len(bbb_state), 1)
+        self.assertEquals(bbb_state[0].takenUntil, 1000)
 
     def testPendingTask(self):
         taskid = makeTaskId()
@@ -318,6 +347,7 @@ class TestTCListener(unittest.TestCase):
             pulse_queue_basename="fake",
             pulse_exchange_basename="fake",
             worker_type="fake",
+            provisioner_id="fake",
             allowed_builders=(
                 ".*good.*",
             ),
@@ -340,7 +370,7 @@ class TestTCListener(unittest.TestCase):
             ],
         }}
 
-        processed_date = fake_now.return_value = Arrow(2015, 4, 1)
+        processed_date = fake_now.return_value = arrow.Arrow(2015, 4, 1)
         self.tclistener.tc_queue.task.return_value = {
             "created": 50,
             "payload": {
