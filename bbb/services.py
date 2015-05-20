@@ -21,9 +21,11 @@ class BuildbotListener(ListenerService):
      * Build started (build.$builder.$buildnum.started)
      * Build finished (build.$builder.$buildnum.log_uploaded)
     """
-    def __init__(self, tc_worker_group, tc_worker_id, pulse_queue_basename, pulse_exchange, *args, **kwargs):
+    def __init__(self, tc_worker_group, tc_worker_id, pulse_queue_basename, pulse_exchange,
+                 allowed_builders=(), *args, **kwargs):
         self.tc_worker_group = tc_worker_group
         self.tc_worker_id = tc_worker_id
+        self.allowed_builders = allowed_builders
         events = (
             ListenerServiceEvent(
                 queue_name="%s/started" % pulse_queue_basename,
@@ -54,11 +56,20 @@ class BuildbotListener(ListenerService):
         master = data["_meta"]["master_name"]
         incarnation = data["_meta"]["master_incarnation"]
         for brid in self.buildbot_db.getBuildRequests(buildnumber, buildername, master, incarnation):
+            for allowed in self.allowed_builders:
+                if re.match(allowed, buildername):
+                    log.debug("Builder %s matches an allowed pattern", buildername)
+                    break
+            else:
+                log.debug("Builder %s does not match any pattern, ignoring it", buildername)
+                continue
+
             brid = brid[0]
             try:
                 task = self.bbb_db.getTaskFromBuildRequest(brid)
             except TaskNotFound:
-                log.debug("Task not found for brid %s, nothing to do.", brid)
+                # TODO: will this still be weird after we have a reverse bridge?
+                log.warning("WEIRD: Task not found for brid %s, nothing to do.", brid)
                 continue
             log.info("Claiming %s", task.taskId)
             # Taskcluster requires runId to be an int, but it comes to us as a long.
@@ -83,31 +94,43 @@ class BuildbotListener(ListenerService):
         try:
             properties = dict((key, (value, source)) for (key, value, source) in data["payload"]["build"]["properties"])
         except KeyError:
-            log.error("Couldn't get job properties")
+            log.error("Couldn't parse job properties from %s , can't proceed", data["payload"]["build"]["properties"])
             return
 
         request_ids = properties.get("request_ids")
         if not request_ids:
-            log.error("Couldn't get request ids from %s", data)
+            log.error("Couldn't get request ids from %s, can't proceed", data)
             return
 
         # Sanity check
-        assert request_ids[1] == "postrun.py"
+        if request_ids[1] != "postrun.py":
+            log.error("WEIRD: Finished event doesn't appear to come from postrun.py, bailing...")
+            return
 
         try:
             results = data["payload"]["build"]["results"]
         except KeyError:
-            log.error("Couldn't find job results")
+            log.error("Couldn't find job results from %s, can't proceed", data["payload"]["build"]["results"])
             return
+
+        buildername = data["payload"]["build"]["builderName"]
 
         # For each request, get the taskId and runId
         for brid in request_ids[0]:
+            for allowed in self.allowed_builders:
+                if re.match(allowed, buildername):
+                    log.debug("Builder %s matches an allowed pattern", buildername)
+                    break
+            else:
+                log.debug("Builder %s does not match any pattern, ignoring it", buildername)
+                continue
+
             try:
                 task = self.bbb_db.getTaskFromBuildRequest(brid)
                 taskid = task.taskId
                 runid = int(task.runId)
             except TaskNotFound:
-                log.debug("Task not found for brid %s, nothing to do.", brid)
+                log.warning("WEIRD: Task not found for brid %s, nothing to do.", brid)
                 continue
 
             log.debug("brid %i : taskId %s : runId %i", brid, taskid, runid)
@@ -199,10 +222,13 @@ class Reflector(ServiceBase):
         # are processed even if one hit an exception.
         for t in self.bbb_db.tasks:
             log.info("Processing task: %s", t.taskId)
-            buildrequest = self.buildbot_db.getBuildRequest(t.buildrequestId)
-            builds = self.buildbot_db.getBuilds(t.buildrequestId)
+            complete = self.buildbot_db.isBuildRequestComplete(t.buildrequestId)
+            nBuilds = self.buildbot_db.getBuildsCount(t.buildrequestId)
             log.debug("Task info: %s", t)
-            log.debug("BuildRequest: %s", buildrequest)
+            if complete:
+                log.debug("BuildRequest %s is complete", t.buildrequestId)
+            else:
+                log.debug("BuildRequest %s is NOT complete", t.buildrequestId)
 
             # If takenUntil isn't set, this task has either never been claimed
             # or got cancelled.
@@ -215,7 +241,7 @@ class Reflector(ServiceBase):
                 # TODO: This can race with build started events. If the reflector runs
                 # before the build started event is processed we'll cancel tasks that
                 # are actually running. FIXME!!!!
-                if buildrequest.complete:
+                if complete:
                     log.info("BuildRequest disappeared before starting, cancelling task")
                     self.tc_queue.cancelTask(t.taskId)
                     self.bbb_db.deleteBuildRequest(t.buildrequestId)
@@ -228,7 +254,7 @@ class Reflector(ServiceBase):
             # BuildRequest is complete, but hasn't been reaped yet. We should
             # continue claiming this task for now, but the BBListener should
             # come along and get rid of it soon.
-            elif buildrequest.complete:
+            elif complete:
                 log.info("BuildRequest %i is done. BBListener should process it soon, reclaiming in the meantime", t.buildrequestId)
                 # TODO: RECLAIM!
                 continue
@@ -237,8 +263,8 @@ class Reflector(ServiceBase):
             # We need to renew the claim to make sure Taskcluster doesn't
             # expire it on us.
             else:
-                if len(builds) > t.runId + 1:
-                    log.warn("Too many buildbot builds? runId is %i but we have %i builds", t.runId, len(builds))
+                if nBuilds > t.runId + 1:
+                    log.warn("Too many buildbot builds? runId is %i but we have %i builds", t.runId, nBuilds)
 
                 log.debug("BuildRequest %s is in progress", t.buildrequestId)
                 # Reclaiming should only happen if we're less than 5 minutes

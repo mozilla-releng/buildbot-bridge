@@ -13,7 +13,7 @@ def main():
     )
     parser.add_argument("-v", "--verbose", dest="loglevel", action="store_const", const=logging.DEBUG)
     parser.add_argument("-q", "--quiet", dest="loglevel", action="store_const", const=logging.WARN)
-    parser.add_argument("-c", "--config", dest="config", required=True)
+    parser.add_argument("-c", "--config", dest="config", default="config.ini", required=True)
     parser.add_argument("service", nargs=1, choices=["bblistener", "reflector", "tclistener"])
 
     args = parser.parse_args()
@@ -45,6 +45,7 @@ def main():
             pulse_exchange=config["bblistener"]["pulse_exchange"],
             tc_worker_group=config["bblistener"]["tc_worker_group"],
             tc_worker_id=config["bblistener"]["tc_worker_id"],
+            allowed_builders=config["allowed_builders"],
             **kwargs
         )
     elif args.service[0] == "reflector":
@@ -62,7 +63,7 @@ def main():
             selfserve_url=config["tclistener"]["selfserve_url"],
             worker_type=config["tclistener"]["worker_type"],
             provisioner_id=config["tclistener"]["provisioner_id"],
-            allowed_builders=config["tclistener"]["allowed_builders"],
+            allowed_builders=config["allowed_builders"],
             **kwargs
         )
     else:
