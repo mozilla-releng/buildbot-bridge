@@ -69,7 +69,7 @@ class BuildbotListener(ListenerService):
                 task = self.bbb_db.getTaskFromBuildRequest(brid)
             except TaskNotFound:
                 # TODO: will this still be weird after we have a reverse bridge?
-                log.warning("WEIRD: Task not found for brid %s, nothing to do.", brid)
+                log.warning("WEIRD: Task not found for brid %s (%s), nothing to do.", brid, buildername)
                 continue
             log.info("Claiming %s", task.taskId)
             # Taskcluster requires runId to be an int, but it comes to us as a long.
