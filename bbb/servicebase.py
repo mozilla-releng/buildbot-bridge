@@ -48,15 +48,17 @@ class BBBDb(object):
 
     def getTask(self, taskid):
         log.info("Fetching task %s", taskid)
-        task = self.tasks_table.select(self.tasks_table.c.taskId == taskid).execute().fetchone()
+        task = self.tasks_table.select(self.tasks_table.c.taskId == taskid).execute().fetchall()
+        if task:
+            task = task[0]
         log.debug("Task: %s", task)
         return task
 
     def getTaskFromBuildRequest(self, brid):
-        task = self.tasks_table.select(self.tasks_table.c.buildrequestId == brid).execute().fetchone()
+        task = self.tasks_table.select(self.tasks_table.c.buildrequestId == brid).execute().fetchall()
         if not task:
             raise TaskNotFound("Couldn't find task for brid %i", brid)
-        return task
+        return task[0]
 
     def createTask(self, taskid, runid, brid, created_date):
         log.info("Creating task %s", taskid)
@@ -105,7 +107,7 @@ class BuildbotDb(object):
     def isBuildRequestComplete(self, brid):
         q = sa.select([self.buildrequests_table.c.complete])\
               .where(self.buildrequests_table.c.id==brid)
-        return bool(self.db.execute(q).fetchone()[0])
+        return bool(self.db.execute(q).fetchall()[0][0])
 
     def getBuildRequests(self, buildnumber, buildername, claimed_by_name, claimed_by_incarnation):
         now = time.time()
@@ -118,13 +120,12 @@ class BuildbotDb(object):
               .where(self.buildrequests_table.c.buildername==buildername)\
               .where(self.buildrequests_table.c.claimed_by_name==claimed_by_name)\
               .where(self.buildrequests_table.c.claimed_by_incarnation==claimed_by_incarnation)
-        print q
         ret = self.db.execute(q).fetchall()
         log.debug("getBuildRequests Query took %f seconds", time.time() - now)
         return ret
 
     def getBuildsCount(self, brid):
-        return self.builds_table.count().execute().fetchone()[0]
+        return self.builds_table.count().execute().fetchall()[0][0]
 
     def createSourceStamp(self, sourcestamp={}):
         branch = sourcestamp.get('branch')
