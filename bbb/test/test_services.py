@@ -15,6 +15,7 @@ class TestBuildbotListener(unittest.TestCase):
         self.bblistener = BuildbotListener(
             bbb_db="sqlite:///:memory:",
             buildbot_db="sqlite:///:memory:",
+            buildbot_db_init_func=makeSchedulerDb,
             tc_config={
                 "credentials": {
                     "clientId": "fake",
@@ -32,7 +33,6 @@ class TestBuildbotListener(unittest.TestCase):
                 ".*good.*",
             ),
         )
-        makeSchedulerDb(self.bblistener.buildbot_db.db)
         # Replace the TaskCluster Queue object with a Mock because we never
         # want to actually talk to TC, just check if the calls that would've
         # been made are correct
@@ -264,6 +264,7 @@ class TestReflector(unittest.TestCase):
         self.reflector = Reflector(
             bbb_db="sqlite:///:memory:",
             buildbot_db="sqlite:///:memory:",
+            buildbot_db_init_func=makeSchedulerDb,
             tc_config={
                 "credentials": {
                     "clientId": "fake",
@@ -272,7 +273,6 @@ class TestReflector(unittest.TestCase):
             },
             interval=5,
         )
-        makeSchedulerDb(self.reflector.buildbot_db.db)
         # Replace the TaskCluster Queue object with a Mock because we never
         # want to actually talk to TC, just check if the calls that would've
         # been made are correct
@@ -390,6 +390,7 @@ class TestTCListener(unittest.TestCase):
         self.tclistener = TCListener(
             bbb_db="sqlite:///:memory:",
             buildbot_db="sqlite:///:memory:",
+            buildbot_db_init_func=makeSchedulerDb,
             tc_config={
                 "credentials": {
                     "clientId": "fake",
@@ -407,7 +408,6 @@ class TestTCListener(unittest.TestCase):
                 ".*good.*",
             ),
         )
-        makeSchedulerDb(self.tclistener.buildbot_db.db)
         # Replace the TaskCluster Queue object with a Mock because we never
         # want to actually talk to TC, just check if the calls that would've
         # been made are correct

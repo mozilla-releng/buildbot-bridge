@@ -84,67 +84,61 @@ class BBBDb(object):
 
 class BuildbotDb(object):
     """Wrapper object for access to preexisting Buildbot scheduler database."""
-    def __init__(self, uri):
+    def __init__(self, uri, init_func=None):
         if "mysql" in uri:
             from MySQLdb.cursors import SSCursor
             self.db = sa.create_engine(uri, pool_recycle=60, connect_args={"cursorclass": SSCursor})
         else:
             self.db = sa.create_engine(uri, pool_recycle=60)
 
+        if init_func:
+            init_func(self.db)
+
+        metadata = sa.MetaData(self.db)
+        metadata.reflect()
+        self.buildrequests_table = metadata.tables["buildrequests"]
+        self.builds_table = metadata.tables["builds"]
+        self.sourcestamps_table = metadata.tables["sourcestamps"]
+        self.buildset_properties_table = metadata.tables["buildset_properties"]
+        self.buildsets_table = metadata.tables["buildsets"]
+
     def isBuildRequestComplete(self, brid):
-        ret = self.db.execute(sa.text("""
-            SELECT
-                complete
-            FROM
-                buildrequests
-            WHERE
-                id=:brid
-            """),
-            brid=brid
-        ).fetchall()[0]
-        return bool(ret)
+        q = sa.select([self.buildrequests_table.c.complete])\
+              .where(self.buildrequests_table.c.id==brid)
+        return bool(self.db.execute(q).fetchone()[0])
 
     def getBuildRequests(self, buildnumber, buildername, claimed_by_name, claimed_by_incarnation):
         now = time.time()
         # TODO: Using complete=0 sucks a bit. If builds complete before we process
         # the build started event, this query doesn't work.
-        ret = self.db.execute(sa.text("""
-                SELECT
-                    buildrequests.id
-                FROM
-                    buildrequests
-                        JOIN builds ON buildrequests.id=builds.brid
-                WHERE
-                    builds.number=:buildnumber
-                    AND buildrequests.complete=0
-                    AND buildrequests.buildername=:buildername
-                    AND buildrequests.claimed_by_name=:claimed_by_name
-                    AND buildrequests.claimed_by_incarnation=:claimed_by_incarnation
-            """),
-            buildnumber=buildnumber,
-            buildername=buildername,
-            claimed_by_name=claimed_by_name,
-            claimed_by_incarnation=claimed_by_incarnation,
-        ).fetchall()
+        q = sa.select([self.buildrequests_table.c.id])\
+              .where(self.builds_table.c.number==buildnumber)\
+              .where(self.buildrequests_table.c.id==self.builds_table.c.brid)\
+              .where(self.buildrequests_table.c.complete==0)\
+              .where(self.buildrequests_table.c.buildername==buildername)\
+              .where(self.buildrequests_table.c.claimed_by_name==claimed_by_name)\
+              .where(self.buildrequests_table.c.claimed_by_incarnation==claimed_by_incarnation)
+        print q
+        ret = self.db.execute(q).fetchall()
         log.debug("getBuildRequests Query took %f seconds", time.time() - now)
         return ret
 
     def getBuildsCount(self, brid):
-        return self.db.execute(sa.text("SELECT COUNT(*) FROM builds WHERE brid=:brid"), brid=brid).fetchall()[0]
+        return self.builds_table.count().execute().fetchone()[0]
 
     def createSourceStamp(self, sourcestamp={}):
-        q = sa.text("""
-            INSERT INTO
-                sourcestamps (`branch`, `revision`, `patchid`, `repository`, `project`)
-            VALUES
-                (:branch, :revision, NULL, :repository, :project)
-        """)
         branch = sourcestamp.get('branch')
         revision = sourcestamp.get('revision')
         repository = sourcestamp.get('repository', '')
         project = sourcestamp.get('project', '')
 
-        r = self.db.execute(q, branch=branch, revision=revision, repository=repository, project=project)
+        q = self.sourcestamps_table.insert(
+            branch=branch,
+            revision=revision,
+            repository=repository,
+            project=project
+        )
+        r = self.db.execute(q)
         ssid = r.lastrowid
         log.info("Created sourcestamp %s", ssid)
 
@@ -152,16 +146,13 @@ class BuildbotDb(object):
         return ssid
 
     def createBuildSetProperties(self, buildsetid, properties):
-        q = sa.text("""
-        INSERT INTO
-            buildset_properties (`buildsetid`, `property_name`, `property_value`)
-        VALUES
-            (:buildsetid, :key, :value)
-        """)
+        q = self.buildset_properties_table.insert(
+            buildsetid=buildsetid
+        )
         props = {}
         props.update(((k, json.dumps((v, "bbb"))) for (k, v) in properties.iteritems()))
         for key, value in props.items():
-            self.db.execute(q, buildsetid=buildsetid, key=key, value=value)
+            self.db.execute(q, key=key, value=value)
             log.info("Created buildset_property %s=%s", key, value)
 
     def injectTask(self, taskid, runid, task):
@@ -171,25 +162,17 @@ class BuildbotDb(object):
 
         sourcestampid = self.createSourceStamp(sourcestamp)
 
-        # Create a buildset
-        q = sa.text("""
-            INSERT INTO
-                buildsets (`external_idstring`, `reason`, `sourcestampid`,
-                           `submitted_at`, `complete`, `complete_at`, `results`)
-            VALUES
-                (:idstring, :reason, :sourcestampid, :submitted_at, 0, NULL, NULL)
-        """)
-
         # TODO: submitted_at should be now, or the original task?
         # using orginal task's date for now
         submitted_at = parseDateString(task['created'])
-        r = self.db.execute(
-            q,
-            idstring="taskId:{}".format(taskid),
+        q = self.buildsets_table.insert(
+            external_idstring="taskId:{}".format(taskid),
             reason="Created by BBB for task {0}".format(taskid),
             sourcestampid=sourcestampid,
             submitted_at=submitted_at,
+            complete=0,
         )
+        r = self.db.execute(q)
 
         buildsetid = r.lastrowid
         log.info("Created buildset %i", buildsetid)
@@ -203,21 +186,15 @@ class BuildbotDb(object):
         # Create the buildrequest
         buildername = payload['buildername']
         priority = payload.get('priority', 0)
-        q = sa.text("""
-            INSERT INTO
-                buildrequests (`buildsetid`, `buildername`, `submitted_at`, `priority`,
-                               `claimed_at`, `claimed_by_name`, `claimed_by_incarnation`,
-                               `complete`, `results`, `complete_at`)
-            VALUES
-                (:buildsetid, :buildername, :submitted_at, :priority, 0, NULL, NULL, 0, NULL, NULL)
-        """)
-        r = self.db.execute(
-            q,
+        q = self.buildrequests_table.insert(
             buildsetid=buildsetid,
             buildername=buildername,
             submitted_at=submitted_at,
-            priority=priority
+            priority=priority,
+            claimed_at=0,
+            complete=0,
         )
+        r = self.db.execute(q)
         log.info("Created buildrequest %s: %i", buildername, r.lastrowid)
         return r.lastrowid
 
@@ -225,9 +202,9 @@ class BuildbotDb(object):
 class ServiceBase(object):
     """A base for all BBB services that manages access to the buildbot db,
        bbb db, and taskcluster."""
-    def __init__(self, bbb_db, buildbot_db, tc_config):
+    def __init__(self, bbb_db, buildbot_db, tc_config, buildbot_db_init_func=None):
         self.bbb_db = BBBDb(bbb_db)
-        self.buildbot_db = BuildbotDb(buildbot_db)
+        self.buildbot_db = BuildbotDb(buildbot_db, buildbot_db_init_func)
         self.tc_queue = taskcluster.Queue(tc_config)
         self.running = False
 
