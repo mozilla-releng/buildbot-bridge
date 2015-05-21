@@ -386,6 +386,7 @@ class TCListener(ListenerService):
         else:
             brid = self.buildbot_db.injectTask(taskid, runid, tc_task)
             self.bbb_db.createTask(taskid, runid, brid, parseDateString(tc_task["created"]))
+
         msg.ack()
 
     def handleException(self, data, msg):
