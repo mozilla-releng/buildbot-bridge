@@ -409,7 +409,6 @@ class TCListener(ListenerService):
         set to "canceled" this may be because a user requested cancellation
         through the Taskcluster API. For these, we need to look for and kill
         any associated Buildbot Builds or BuildRequests."""
-        msg.ack()
 
         taskid = data["status"]["taskId"]
         reason = data["status"]["runs"][-1]["reasonResolved"]
@@ -428,10 +427,10 @@ class TCListener(ListenerService):
             # sync.
             if not our_task:
                 log.info("No task found in our database, nothing to do.")
+                msg.ack()
                 return
             brid = our_task.buildrequestId
             buildIds = self.buildbot_db.getBuildIds(brid)
-            print buildIds
             # The branch in the Buildbot database is the path on the hg server
             # relative to the root. Self serve needs the "short" branch name,
             # which is the last part of the path.
@@ -451,6 +450,7 @@ class TCListener(ListenerService):
             else:
                 log.info("BuildRequest found for task %s, cancelling it.", taskid)
                 self.selfserve.cancelBuildRequest(branch, brid)
+            msg.ack()
             # In either case we explicitly do not want to delete the task from
             # our own database -- we still need the BuildbotListener to come
             # around and attach JSON artifacts to the Task, which it will only
@@ -458,3 +458,4 @@ class TCListener(ListenerService):
             # reaping it, too.
         else:
             log.debug("Ignoring Taskcluster Task exception for reason: %s", reason)
+            msg.ack()

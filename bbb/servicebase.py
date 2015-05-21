@@ -178,13 +178,13 @@ class BuildbotDb(object):
         return [row[0] for row in self.db.execute(q).fetchall()]
 
     def getBranch(self, brid):
-        q = sa.text("""SELECT branch FROM sourcestamps
-INNER JOIN buildsets ON buildsets.sourcestampid=sourcestamps.id
-INNER JOIN buildrequests ON buildrequests.buildsetid=buildsets.id
-WHERE buildrequests.id=:brid""")
-        r = self.db.execute(q, brid=brid).fetchone()
+        q = sa.select([self.sourcestamps_table.c.branch])\
+              .where(self.sourcestamps_table.c.id==self.buildsets_table.c.sourcestampid)\
+              .where(self.buildsets_table.c.id==self.buildrequests_table.c.buildsetid)\
+              .where(self.buildrequests_table.c.id==brid)
+        r = self.db.execute(q).fetchall()
         if r:
-            return r[0]
+            return r[0][0]
         else:
             return None
 
