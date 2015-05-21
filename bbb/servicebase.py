@@ -132,11 +132,11 @@ class BuildbotDb(object):
         repository = sourcestamp.get('repository', '')
         project = sourcestamp.get('project', '')
 
-        q = self.sourcestamps_table.insert(
+        q = self.sourcestamps_table.insert().values(
             branch=branch,
             revision=revision,
             repository=repository,
-            project=project
+            project=project,
         )
         r = self.db.execute(q)
         ssid = r.lastrowid
@@ -146,13 +146,13 @@ class BuildbotDb(object):
         return ssid
 
     def createBuildSetProperties(self, buildsetid, properties):
-        q = self.buildset_properties_table.insert(
+        q = self.buildset_properties_table.insert().values(
             buildsetid=buildsetid
         )
         props = {}
         props.update(((k, json.dumps((v, "bbb"))) for (k, v) in properties.iteritems()))
         for key, value in props.items():
-            self.db.execute(q, key=key, value=value)
+            self.db.execute(q, property_name=key, property_value=value)
             log.info("Created buildset_property %s=%s", key, value)
 
     def injectTask(self, taskid, runid, task):
@@ -165,7 +165,7 @@ class BuildbotDb(object):
         # TODO: submitted_at should be now, or the original task?
         # using orginal task's date for now
         submitted_at = parseDateString(task['created'])
-        q = self.buildsets_table.insert(
+        q = self.buildsets_table.insert().values(
             external_idstring="taskId:{}".format(taskid),
             reason="Created by BBB for task {0}".format(taskid),
             sourcestampid=sourcestampid,
@@ -186,7 +186,7 @@ class BuildbotDb(object):
         # Create the buildrequest
         buildername = payload['buildername']
         priority = payload.get('priority', 0)
-        q = self.buildrequests_table.insert(
+        q = self.buildrequests_table.insert().values(
             buildsetid=buildsetid,
             buildername=buildername,
             submitted_at=submitted_at,
