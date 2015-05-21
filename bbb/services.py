@@ -102,43 +102,47 @@ class BuildbotListener(ListenerService):
         contains all of the BuildRequest ids that the Build satisfied.
         """
         log.debug("Handling finished event: %s", data)
-        acked = False
 
         # Get the request_ids from the properties
         try:
             properties = dict((key, (value, source)) for (key, value, source) in data["payload"]["build"]["properties"])
         except KeyError:
             log.error("Couldn't parse job properties from %s , can't proceed", data["payload"]["build"]["properties"])
+            msg.ack()
             return
 
         request_ids = properties.get("request_ids")
         if not request_ids:
             log.error("Couldn't get request ids from %s, can't proceed", data)
+            msg.ack()
             return
 
         # Sanity check
         if request_ids[1] != "postrun.py":
             log.error("WEIRD: Finished event doesn't appear to come from postrun.py, bailing...")
+            msg.ack()
             return
 
         try:
             results = data["payload"]["build"]["results"]
         except KeyError:
             log.error("Couldn't find job results from %s, can't proceed", data["payload"]["build"]["results"])
+            msg.ack()
             return
 
         buildername = data["payload"]["build"]["builderName"]
+        for allowed in self.allowed_builders:
+            if re.match(allowed, buildername):
+                log.debug("Builder %s matches an allowed pattern", buildername)
+                break
+        else:
+            log.debug("Builder %s does not match any pattern, ignoring it", buildername)
+            msg.ack()
+            return
 
+        acked = False
         # For each request, get the taskId and runId
         for brid in request_ids[0]:
-            for allowed in self.allowed_builders:
-                if re.match(allowed, buildername):
-                    log.debug("Builder %s matches an allowed pattern", buildername)
-                    break
-            else:
-                log.debug("Builder %s does not match any pattern, ignoring it", buildername)
-                continue
-
             try:
                 task = self.bbb_db.getTaskFromBuildRequest(brid)
                 taskid = task.taskId
@@ -196,6 +200,10 @@ class BuildbotListener(ListenerService):
                 msg.ack()
                 self.bbb_db.deleteBuildRequest(brid)
 
+        # If everything went well and the message hasn't been acked, do it. This could
+        # happen if the "WEIRD" conditions is hit in every iteration of the loop
+        if not acked:
+            msg.ack()
 
 class Reflector(ServiceBase):
     """Reflects Task state into Taskcluster based on the state of the
