@@ -12,13 +12,14 @@
     "pulse_password": "foo",
     "pulse_queue_basename": "queue/foo",
 
+    "allowed_builders": [
+        ".*alder.*"
+    ],
+
     "tclistener": {
         "pulse_exchange_basename": "exchange/taskcluster-queue/v1",
         "worker_type": "buildbot-bridge",
         "provisioner_id": "buildbot-bridge",
-        "allowed_builders": [
-            ".*alder.*"
-        ],
         "logfile": "tclistener.log"
     },
     "bblistener": {
