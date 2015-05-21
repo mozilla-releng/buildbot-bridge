@@ -49,21 +49,23 @@ class BuildbotListener(ListenerService):
         also update the BBB database with the claim time which triggers the
         Reflector to start reclaiming it periodically."""
         log.debug("Handling started event: %s", data)
-        acked = False
         # TODO: Error handling?
         buildnumber = data["payload"]["build"]["number"]
         buildername = data["payload"]["build"]["builderName"]
         master = data["_meta"]["master_name"]
         incarnation = data["_meta"]["master_incarnation"]
-        for brid in self.buildbot_db.getBuildRequests(buildnumber, buildername, master, incarnation):
-            for allowed in self.allowed_builders:
-                if re.match(allowed, buildername):
-                    log.debug("Builder %s matches an allowed pattern", buildername)
-                    break
-            else:
-                log.debug("Builder %s does not match any pattern, ignoring it", buildername)
-                continue
 
+        for allowed in self.allowed_builders:
+            if re.match(allowed, buildername):
+                log.debug("Builder %s matches an allowed pattern", buildername)
+                break
+        else:
+            log.debug("Builder %s does not match any pattern, ignoring it", buildername)
+            msg.ack()
+            return
+
+        acked = False
+        for brid in self.buildbot_db.getBuildRequests(buildnumber, buildername, master, incarnation):
             brid = brid[0]
             try:
                 task = self.bbb_db.getTaskFromBuildRequest(brid)
@@ -85,6 +87,11 @@ class BuildbotListener(ListenerService):
                 acked = True
             log.debug("Got claim: %s", claim)
             self.bbb_db.updateTakenUntil(brid, parseDateString(claim["takenUntil"]))
+
+        # If everything went well and the message hasn't been acked, do it. This could
+        # happen if the "WEIRD" conditions is hit in every iteration of the loop
+        if not acked:
+            msg.ack()
 
     def handleFinished(self, data, msg):
         """When a Build finishes in Buildbot we pass along the final state of
