@@ -49,21 +49,23 @@ class BuildbotListener(ListenerService):
         also update the BBB database with the claim time which triggers the
         Reflector to start reclaiming it periodically."""
         log.debug("Handling started event: %s", data)
-        msg.ack()
         # TODO: Error handling?
         buildnumber = data["payload"]["build"]["number"]
         buildername = data["payload"]["build"]["builderName"]
         master = data["_meta"]["master_name"]
         incarnation = data["_meta"]["master_incarnation"]
-        for brid in self.buildbot_db.getBuildRequests(buildnumber, buildername, master, incarnation):
-            for allowed in self.allowed_builders:
-                if re.match(allowed, buildername):
-                    log.debug("Builder %s matches an allowed pattern", buildername)
-                    break
-            else:
-                log.debug("Builder %s does not match any pattern, ignoring it", buildername)
-                continue
 
+        for allowed in self.allowed_builders:
+            if re.match(allowed, buildername):
+                log.debug("Builder %s matches an allowed pattern", buildername)
+                break
+        else:
+            log.debug("Builder %s does not match any pattern, ignoring it", buildername)
+            msg.ack()
+            return
+
+        acked = False
+        for brid in self.buildbot_db.getBuildRequests(buildnumber, buildername, master, incarnation):
             brid = brid[0]
             try:
                 task = self.bbb_db.getTaskFromBuildRequest(brid)
@@ -77,8 +79,19 @@ class BuildbotListener(ListenerService):
                 "workerGroup": self.tc_worker_group,
                 "workerId": self.tc_worker_id,
             })
+            # Once we've claimed the Task we're past the point of no return.
+            # Even if something goes wrong after this, we wouldn't want the
+            # message to be processed again.
+            if not acked:
+                msg.ack()
+                acked = True
             log.debug("Got claim: %s", claim)
             self.bbb_db.updateTakenUntil(brid, parseDateString(claim["takenUntil"]))
+
+        # If everything went well and the message hasn't been acked, do it. This could
+        # happen if the "WEIRD" conditions is hit in every iteration of the loop
+        if not acked:
+            msg.ack()
 
     def handleFinished(self, data, msg):
         """When a Build finishes in Buildbot we pass along the final state of
@@ -89,42 +102,47 @@ class BuildbotListener(ListenerService):
         contains all of the BuildRequest ids that the Build satisfied.
         """
         log.debug("Handling finished event: %s", data)
-        msg.ack()
+
         # Get the request_ids from the properties
         try:
             properties = dict((key, (value, source)) for (key, value, source) in data["payload"]["build"]["properties"])
         except KeyError:
             log.error("Couldn't parse job properties from %s , can't proceed", data["payload"]["build"]["properties"])
+            msg.ack()
             return
 
         request_ids = properties.get("request_ids")
         if not request_ids:
             log.error("Couldn't get request ids from %s, can't proceed", data)
+            msg.ack()
             return
 
         # Sanity check
         if request_ids[1] != "postrun.py":
             log.error("WEIRD: Finished event doesn't appear to come from postrun.py, bailing...")
+            msg.ack()
             return
 
         try:
             results = data["payload"]["build"]["results"]
         except KeyError:
             log.error("Couldn't find job results from %s, can't proceed", data["payload"]["build"]["results"])
+            msg.ack()
             return
 
         buildername = data["payload"]["build"]["builderName"]
+        for allowed in self.allowed_builders:
+            if re.match(allowed, buildername):
+                log.debug("Builder %s matches an allowed pattern", buildername)
+                break
+        else:
+            log.debug("Builder %s does not match any pattern, ignoring it", buildername)
+            msg.ack()
+            return
 
+        acked = False
         # For each request, get the taskId and runId
         for brid in request_ids[0]:
-            for allowed in self.allowed_builders:
-                if re.match(allowed, buildername):
-                    log.debug("Builder %s matches an allowed pattern", buildername)
-                    break
-            else:
-                log.debug("Builder %s does not match any pattern, ignoring it", buildername)
-                continue
-
             try:
                 task = self.bbb_db.getTaskFromBuildRequest(brid)
                 taskid = task.taskId
@@ -140,15 +158,21 @@ class BuildbotListener(ListenerService):
             expires = arrow.now().replace(weeks=1).isoformat()
             createJsonArtifact(self.tc_queue, taskid, runid, "public/properties.json", properties, expires)
 
+            # Once we've updated Taskcluster with the resolution we're past the
+            # point of no return. Even if something goes wrong afterwards we
+            # don't want the message to be processed again because Taskcluster
+            # will end up returning errors.
             log.info("Buildbot results are %s", results)
             if results == SUCCESS:
                 log.info("Marking task %s as completed", taskid)
                 self.tc_queue.reportCompleted(taskid, runid)
+                msg.ack()
                 self.bbb_db.deleteBuildRequest(brid)
             # Eventually we probably need to set something different here.
             elif results in (WARNINGS, FAILURE):
                 log.info("Marking task %s as failed", taskid)
                 self.tc_queue.reportFailed(taskid, runid)
+                msg.ack()
                 self.bbb_db.deleteBuildRequest(brid)
             # Should never be set for builds, but just in case...
             elif results == SKIPPED:
@@ -156,6 +180,7 @@ class BuildbotListener(ListenerService):
             elif results == EXCEPTION:
                 log.info("Marking task %s as malformed payload exception", taskid)
                 self.tc_queue.reportException(taskid, runid, {"reason": "malformed-payload"})
+                msg.ack()
                 self.bbb_db.deleteBuildRequest(brid)
             elif results == RETRY:
                 log.info("Marking task %s as malformed payload exception and rerunning", taskid)
@@ -165,6 +190,7 @@ class BuildbotListener(ListenerService):
                 # using worker-shutdown would probably be better for treeherder, because
                 # the buildbot and TC states would line up better.
                 self.tc_queue.reportException(taskid, runid, {"reason": "malformed-payload"})
+                msg.ack()
                 # TODO: runid might be wrong for the rerun for a period of time because we don't update it
                 # until the TCListener gets the task-pending event. Maybe we should update it here too/instead?
                 self.tc_queue.rerunTask(taskid)
@@ -184,8 +210,13 @@ class BuildbotListener(ListenerService):
                 # database.
                 log.info("Marking task %s as cancelled", taskid)
                 self.tc_queue.cancelTask(taskid)
+                msg.ack()
                 self.bbb_db.deleteBuildRequest(brid)
 
+        # If everything went well and the message hasn't been acked, do it. This could
+        # happen if the "WEIRD" conditions is hit in every iteration of the loop
+        if not acked:
+            msg.ack()
 
 class Reflector(ServiceBase):
     """Reflects Task state into Taskcluster based on the state of the
@@ -327,7 +358,6 @@ class TCListener(ListenerService):
         In the case of the latter, this method updates the existing row in the
         BBB database to start tracking the new Run."""
 
-        msg.ack()
         taskid = data["status"]["taskId"]
         runid = data["status"]["runs"][-1]["runId"]
 
@@ -347,6 +377,7 @@ class TCListener(ListenerService):
             # but we can't use reportException for cancelling pending tasks,
             # so this will show up as "cancelled" on TC.
             self.tc_queue.cancelTask(taskid)
+            msg.ack()
             # If this Task is already in our database, we should delete it
             # because the Task has been cancelled.
             if our_task:
@@ -369,6 +400,8 @@ class TCListener(ListenerService):
         else:
             brid = self.buildbot_db.injectTask(taskid, runid, tc_task)
             self.bbb_db.createTask(taskid, runid, brid, parseDateString(tc_task["created"]))
+
+        msg.ack()
 
     def handleException(self, data, msg):
         """Most exceptions from Taskcluster are ignoreable because they are
