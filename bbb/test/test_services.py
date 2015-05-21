@@ -1,3 +1,4 @@
+import json
 from mock import Mock, patch
 import unittest
 
@@ -15,6 +16,7 @@ class TestBuildbotListener(unittest.TestCase):
         self.bblistener = BuildbotListener(
             bbb_db="sqlite:///:memory:",
             buildbot_db="sqlite:///:memory:",
+            buildbot_db_init_func=makeSchedulerDb,
             tc_config={
                 "credentials": {
                     "clientId": "fake",
@@ -32,7 +34,6 @@ class TestBuildbotListener(unittest.TestCase):
                 ".*good.*",
             ),
         )
-        makeSchedulerDb(self.bblistener.buildbot_db.db)
         # Replace the TaskCluster Queue object with a Mock because we never
         # want to actually talk to TC, just check if the calls that would've
         # been made are correct
@@ -264,6 +265,7 @@ class TestReflector(unittest.TestCase):
         self.reflector = Reflector(
             bbb_db="sqlite:///:memory:",
             buildbot_db="sqlite:///:memory:",
+            buildbot_db_init_func=makeSchedulerDb,
             tc_config={
                 "credentials": {
                     "clientId": "fake",
@@ -272,7 +274,6 @@ class TestReflector(unittest.TestCase):
             },
             interval=5,
         )
-        makeSchedulerDb(self.reflector.buildbot_db.db)
         # Replace the TaskCluster Queue object with a Mock because we never
         # want to actually talk to TC, just check if the calls that would've
         # been made are correct
@@ -390,6 +391,7 @@ class TestTCListener(unittest.TestCase):
         self.tclistener = TCListener(
             bbb_db="sqlite:///:memory:",
             buildbot_db="sqlite:///:memory:",
+            buildbot_db_init_func=makeSchedulerDb,
             tc_config={
                 "credentials": {
                     "clientId": "fake",
@@ -408,7 +410,6 @@ class TestTCListener(unittest.TestCase):
                 ".*good.*",
             ),
         )
-        makeSchedulerDb(self.tclistener.buildbot_db.db)
         # Replace the TaskCluster Queue object with a Mock because we never
         # want to actually talk to TC, just check if the calls that would've
         # been made are correct
@@ -445,6 +446,14 @@ class TestTCListener(unittest.TestCase):
         self.assertEquals(bbb_state[0].createdDate, 50)
         self.assertEquals(bbb_state[0].processedDate, processed_date.timestamp)
         self.assertEquals(bbb_state[0].takenUntil, None)
+
+        buildrequests = self.tclistener.buildbot_db.buildrequests_table.select().execute().fetchall()
+        self.assertEquals(buildrequests[0].id, 1)
+        self.assertEquals(buildrequests[0].buildername, "builder good name")
+        properties = self.tclistener.buildbot_db.buildset_properties_table.select().execute().fetchall()
+        self.assertEquals(len(properties), 1)
+        self.assertEquals(properties[0].property_name, "taskId")
+        self.assertEquals(json.loads(properties[0].property_value), [taskid, "bbb"])
 
     def testHandlePendingUpdateRunId(self):
         taskid = makeTaskId()

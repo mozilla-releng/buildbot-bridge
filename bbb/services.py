@@ -69,7 +69,7 @@ class BuildbotListener(ListenerService):
                 task = self.bbb_db.getTaskFromBuildRequest(brid)
             except TaskNotFound:
                 # TODO: will this still be weird after we have a reverse bridge?
-                log.warning("WEIRD: Task not found for brid %s, nothing to do.", brid)
+                log.warning("WEIRD: Task not found for brid %s (%s), nothing to do.", brid, buildername)
                 continue
             log.info("Claiming %s", task.taskId)
             # Taskcluster requires runId to be an int, but it comes to us as a long.
@@ -397,7 +397,8 @@ class TCListener(ListenerService):
                 log.info("No task found in our database, nothing to do.")
                 return
             brid = our_task.buildrequestId
-            builds = self.buildbot_db.getBuilds(brid)
+            buildIds = self.buildbot_db.getBuildIds(brid)
+            print buildIds
             # The branch in the Buildbot database is the path on the hg server
             # relative to the root. Self serve needs the "short" branch name,
             # which is the last part of the path.
@@ -407,10 +408,11 @@ class TCListener(ListenerService):
             # We need to use selfserve for this because it has special magic
             # that knows how to find the buildbot master running the job and
             # hit the "stop" button on its web interface.
-            if builds:
-                build = builds[0]
-                log.info("Build found for task %s, cancelling it.", taskid)
-                self.selfserve.cancelBuild(branch, build.id)
+            if buildIds:
+                # TODO: add a test for multiple build ids
+                for id_ in buildIds:
+                    log.info("BuildId %d found for task %s, cancelling it.", id_, taskid)
+                    self.selfserve.cancelBuild(branch, id_)
             # If there's no Build running yet we can just cancel the
             # BuildRequest.
             else:
