@@ -22,6 +22,13 @@ class TaskNotFound(Exception):
 class BBBDb(object):
     """Wrapper object for creation of and access to Buildbot Bridge database."""
     def __init__(self, uri):
+        # MySQLdb's default cursor doesn't let you stream rows as you receive them.
+        # Even if you use SQLAlchemy iterators, _all_ rows will be read before any
+        # are returned. The SSCursor lets you stream data, but has the side effect
+        # of not allowing multiple queries on the same Connection at the same time.
+        # That's OK for us because each service is single threaded, but it means
+        # we must ensure that "close" is called whenever we do queries. "fetchall"
+        # does this automatically, so we always use it.
         if "mysql" in uri:
             from MySQLdb.cursors import SSCursor
             self.db = sa.create_engine(uri, pool_recycle=60, connect_args={"cursorclass": SSCursor})
@@ -87,6 +94,13 @@ class BBBDb(object):
 class BuildbotDb(object):
     """Wrapper object for access to preexisting Buildbot scheduler database."""
     def __init__(self, uri, init_func=None):
+        # MySQLdb's default cursor doesn't let you stream rows as you receive them.
+        # Even if you use SQLAlchemy iterators, _all_ rows will be read before any
+        # are returned. The SSCursor lets you stream data, but has the side effect
+        # of not allowing multiple queries on the same Connection at the same time.
+        # That's OK for us because each service is single threaded, but it means
+        # we must ensure that "close" is called whenever we do queries. "fetchall"
+        # does this automatically, so we always use it.
         if "mysql" in uri:
             from MySQLdb.cursors import SSCursor
             self.db = sa.create_engine(uri, pool_recycle=60, connect_args={"cursorclass": SSCursor})
