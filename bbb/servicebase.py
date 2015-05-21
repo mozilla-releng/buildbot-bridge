@@ -125,7 +125,7 @@ class BuildbotDb(object):
         return ret
 
     def getBuildsCount(self, brid):
-        return self.builds_table.count().execute().fetchall()[0][0]
+        return self.builds_table.count().where(self.builds_table.c.brid==brid).execute().fetchall()[0][0]
 
     def createSourceStamp(self, sourcestamp={}):
         branch = sourcestamp.get('branch')
