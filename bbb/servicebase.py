@@ -23,7 +23,19 @@ class TaskNotFound(Exception):
 class BBBDb(object):
     """Wrapper object for creation of and access to Buildbot Bridge database."""
     def __init__(self, uri):
-        self.db = sa.create_engine(uri, pool_recycle=60)
+        # MySQLdb's default cursor doesn't let you stream rows as you receive them.
+        # Even if you use SQLAlchemy iterators, _all_ rows will be read before any
+        # are returned. The SSCursor lets you stream data, but has the side effect
+        # of not allowing multiple queries on the same Connection at the same time.
+        # That's OK for us because each service is single threaded, but it means
+        # we must ensure that "close" is called whenever we do queries. "fetchall"
+        # does this automatically, so we always use it.
+        if "mysql" in uri:
+            from MySQLdb.cursors import SSCursor
+            self.db = sa.create_engine(uri, pool_recycle=60, connect_args={"cursorclass": SSCursor})
+        else:
+            self.db = sa.create_engine(uri, pool_recycle=60)
+
         metadata = sa.MetaData(self.db)
         self.tasks_table = sa.Table('tasks', metadata,
             sa.Column('buildrequestId', sa.Integer, primary_key=True),
@@ -38,21 +50,23 @@ class BBBDb(object):
     @property
     def tasks(self):
         log.debug("Fetching all tasks")
-        tasks = self.tasks_table.select().execute().fetchall()
-        log.debug("Tasks: %s", tasks)
-        return tasks
+        for t in self.tasks_table.select().execute():
+            log.debug("Yielding %s", t)
+            yield t
 
     def getTask(self, taskid):
         log.info("Fetching task %s", taskid)
-        task = self.tasks_table.select(self.tasks_table.c.taskId == taskid).execute().fetchone()
+        task = self.tasks_table.select(self.tasks_table.c.taskId == taskid).execute().fetchall()
+        if task:
+            task = task[0]
         log.debug("Task: %s", task)
         return task
 
     def getTaskFromBuildRequest(self, brid):
-        task = self.tasks_table.select(self.tasks_table.c.buildrequestId == brid).execute().fetchone()
+        task = self.tasks_table.select(self.tasks_table.c.buildrequestId == brid).execute().fetchall()
         if not task:
             raise TaskNotFound("Couldn't find task for brid %i", brid)
-        return task
+        return task[0]
 
     def createTask(self, taskid, runid, brid, created_date):
         log.info("Creating task %s", taskid)
@@ -80,41 +94,55 @@ class BBBDb(object):
 
 class BuildbotDb(object):
     """Wrapper object for access to preexisting Buildbot scheduler database."""
-    def __init__(self, uri):
-        self.db = sa.create_engine(uri, pool_recycle=60)
+    def __init__(self, uri, init_func=None):
+        # MySQLdb's default cursor doesn't let you stream rows as you receive them.
+        # Even if you use SQLAlchemy iterators, _all_ rows will be read before any
+        # are returned. The SSCursor lets you stream data, but has the side effect
+        # of not allowing multiple queries on the same Connection at the same time.
+        # That's OK for us because each service is single threaded, but it means
+        # we must ensure that "close" is called whenever we do queries. "fetchall"
+        # does this automatically, so we always use it.
+        if "mysql" in uri:
+            from MySQLdb.cursors import SSCursor
+            self.db = sa.create_engine(uri, pool_recycle=60, connect_args={"cursorclass": SSCursor})
+        else:
+            self.db = sa.create_engine(uri, pool_recycle=60)
 
-    def getBuildRequest(self, brid):
-        return self.db.execute(sa.text("select * from buildrequests where id=:brid"), brid=brid).fetchone()
+        if init_func:
+            init_func(self.db)
+
+        metadata = sa.MetaData(self.db)
+        metadata.reflect()
+        self.buildrequests_table = metadata.tables["buildrequests"]
+        self.builds_table = metadata.tables["builds"]
+        self.sourcestamps_table = metadata.tables["sourcestamps"]
+        self.buildset_properties_table = metadata.tables["buildset_properties"]
+        self.buildsets_table = metadata.tables["buildsets"]
+
+    def isBuildRequestComplete(self, brid):
+        q = sa.select([self.buildrequests_table.c.complete])\
+              .where(self.buildrequests_table.c.id==brid)
+        return bool(self.db.execute(q).fetchall()[0][0])
 
     def getBuildRequests(self, buildnumber, buildername, claimed_by_name, claimed_by_incarnation):
         now = time.time()
-        ret = self.db.execute(
-            # TODO: Using complete=0 sucks a bit. If builds complete before we process
-            # the build started event, this query doesn't work.
-            sa.text("""select buildrequests.id from buildrequests join builds
-                       ON buildrequests.id=builds.brid
-                       WHERE builds.number=:buildnumber
-                         AND buildrequests.complete=0
-                         AND buildrequests.buildername=:buildername
-                         AND buildrequests.claimed_by_name=:claimed_by_name
-                         AND buildrequests.claimed_by_incarnation=:claimed_by_incarnation"""),
-            buildnumber=buildnumber,
-            buildername=buildername,
-            claimed_by_name=claimed_by_name,
-            claimed_by_incarnation=claimed_by_incarnation,
-        ).fetchall()
+        # TODO: Using complete=0 sucks a bit. If builds complete before we process
+        # the build started event, this query doesn't work.
+        q = sa.select([self.buildrequests_table.c.id])\
+              .where(self.builds_table.c.number==buildnumber)\
+              .where(self.buildrequests_table.c.id==self.builds_table.c.brid)\
+              .where(self.buildrequests_table.c.complete==0)\
+              .where(self.buildrequests_table.c.buildername==buildername)\
+              .where(self.buildrequests_table.c.claimed_by_name==claimed_by_name)\
+              .where(self.buildrequests_table.c.claimed_by_incarnation==claimed_by_incarnation)
+        ret = self.db.execute(q).fetchall()
         log.debug("getBuildRequests Query took %f seconds", time.time() - now)
         return ret
 
-    def getBuilds(self, brid):
-        return self.db.execute(sa.text("select * from builds where brid=:brid"), brid=brid).fetchall()
+    def getBuildsCount(self, brid):
+        return self.builds_table.count().where(self.builds_table.c.brid==brid).execute().fetchall()[0][0]
 
     def createSourceStamp(self, sourcestamp={}):
-        q = sa.text("""INSERT INTO sourcestamps
-                    (`branch`, `revision`, `patchid`, `repository`, `project`)
-                VALUES
-                    (:branch, :revision, NULL, :repository, :project)
-                """)
         branch = sourcestamp.get('branch')
         # Branches from Taskcluster usually come in as a full URL.
         # Sourcestamps need the "short" version of the branch, which is
@@ -125,7 +153,13 @@ class BuildbotDb(object):
         repository = sourcestamp.get('repository', '')
         project = sourcestamp.get('project', '')
 
-        r = self.db.execute(q, branch=branch, revision=revision, repository=repository, project=project)
+        q = self.sourcestamps_table.insert().values(
+            branch=branch,
+            revision=revision,
+            repository=repository,
+            project=project,
+        )
+        r = self.db.execute(q)
         ssid = r.lastrowid
         log.info("Created sourcestamp %s", ssid)
 
@@ -133,15 +167,13 @@ class BuildbotDb(object):
         return ssid
 
     def createBuildSetProperties(self, buildsetid, properties):
-        q = sa.text("""INSERT INTO buildset_properties
-                (`buildsetid`, `property_name`, `property_value`)
-                VALUES
-                (:buildsetid, :key, :value)
-                """)
+        q = self.buildset_properties_table.insert().values(
+            buildsetid=buildsetid
+        )
         props = {}
         props.update(((k, json.dumps((v, "bbb"))) for (k, v) in properties.iteritems()))
         for key, value in props.items():
-            self.db.execute(q, buildsetid=buildsetid, key=key, value=value)
+            self.db.execute(q, property_name=key, property_value=value)
             log.info("Created buildset_property %s=%s", key, value)
 
     def injectTask(self, taskid, runid, task):
@@ -151,22 +183,17 @@ class BuildbotDb(object):
 
         sourcestampid = self.createSourceStamp(sourcestamp)
 
-        # Create a buildset
-        q = sa.text("""INSERT INTO buildsets
-            (`external_idstring`, `reason`, `sourcestampid`, `submitted_at`, `complete`, `complete_at`, `results`)
-            VALUES
-            (:idstring, :reason, :sourcestampid, :submitted_at, 0, NULL, NULL)""")
-
         # TODO: submitted_at should be now, or the original task?
         # using orginal task's date for now
         submitted_at = parseDateString(task['created'])
-        r = self.db.execute(
-            q,
-            idstring="taskId:{}".format(taskid),
+        q = self.buildsets_table.insert().values(
+            external_idstring="taskId:{}".format(taskid),
             reason="Created by BBB for task {0}".format(taskid),
             sourcestampid=sourcestampid,
             submitted_at=submitted_at,
+            complete=0,
         )
+        r = self.db.execute(q)
 
         buildsetid = r.lastrowid
         log.info("Created buildset %i", buildsetid)
@@ -180,20 +207,15 @@ class BuildbotDb(object):
         # Create the buildrequest
         buildername = payload['buildername']
         priority = payload.get('priority', 0)
-        q = sa.text("""INSERT INTO buildrequests
-                (`buildsetid`, `buildername`, `submitted_at`, `priority`,
-                    `claimed_at`, `claimed_by_name`, `claimed_by_incarnation`,
-                    `complete`, `results`, `complete_at`)
-                VALUES
-                (:buildsetid, :buildername, :submitted_at, :priority, 0, NULL, NULL, 0, NULL, NULL)""")
-        log.info(q)
-        r = self.db.execute(
-            q,
+        q = self.buildrequests_table.insert().values(
             buildsetid=buildsetid,
             buildername=buildername,
             submitted_at=submitted_at,
-            priority=priority
+            priority=priority,
+            claimed_at=0,
+            complete=0,
         )
+        r = self.db.execute(q)
         log.info("Created buildrequest %s: %i", buildername, r.lastrowid)
         return r.lastrowid
 
@@ -201,9 +223,9 @@ class BuildbotDb(object):
 class ServiceBase(object):
     """A base for all BBB services that manages access to the buildbot db,
        bbb db, and taskcluster."""
-    def __init__(self, bbb_db, buildbot_db, tc_config):
+    def __init__(self, bbb_db, buildbot_db, tc_config, buildbot_db_init_func=None):
         self.bbb_db = BBBDb(bbb_db)
-        self.buildbot_db = BuildbotDb(buildbot_db)
+        self.buildbot_db = BuildbotDb(buildbot_db, buildbot_db_init_func)
         self.tc_queue = taskcluster.Queue(tc_config)
         self.running = False
 
@@ -233,6 +255,8 @@ class ListenerService(ServiceBase):
             userid=self.pulse_user,
             password=self.pulse_password,
             ssl=True,
+            # Kombu doesn't support the port correctly for amqp with ssl...
+            port=5671,
         )
         consumers = []
         for event in self.events:
