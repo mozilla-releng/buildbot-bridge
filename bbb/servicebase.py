@@ -190,7 +190,7 @@ class BuildbotDb(object):
             return None
 
     def createSourceStamp(self, sourcestamp={}):
-        branch = sourcestamp.get('branch')
+        branch = sourcestamp.get('branch').rstrip("/")
         # Branches from Taskcluster usually come in as a full URL.
         # Sourcestamps need the "short" version of the branch, which is
         # path component of the URL. Eg: "integration/mozilla-inbound"
