@@ -71,7 +71,6 @@ class BuildbotListener(ListenerService):
             msg.ack()
             return
 
-        acked = False
         for brid in self.buildbot_db.getBuildRequests(buildnumber, buildername, master, incarnation):
             brid = brid[0]
             try:
@@ -89,15 +88,14 @@ class BuildbotListener(ListenerService):
             # Once we've claimed the Task we're past the point of no return.
             # Even if something goes wrong after this, we wouldn't want the
             # message to be processed again.
-            if not acked:
+            if not msg.acknowledged:
                 msg.ack()
-                acked = True
             log.debug("Got claim: %s", claim)
             self.bbb_db.updateTakenUntil(brid, parseDateString(claim["takenUntil"]))
 
         # If everything went well and the message hasn't been acked, do it. This could
         # happen if the "WEIRD" conditions is hit in every iteration of the loop
-        if not acked:
+        if not msg.acknowledged:
             msg.ack()
 
     def handleFinished(self, data, msg):
@@ -143,7 +141,6 @@ class BuildbotListener(ListenerService):
             msg.ack()
             return
 
-        acked = False
         # For each request, get the taskId and runId
         for brid in request_ids[0]:
             try:
@@ -169,22 +166,26 @@ class BuildbotListener(ListenerService):
             if results == SUCCESS:
                 log.info("Marking task %s as completed", taskid)
                 self.tc_queue.reportCompleted(taskid, runid)
-                msg.ack()
+                if not msg.acknowledged:
+                    msg.ack()
                 self.bbb_db.deleteBuildRequest(brid)
             # Eventually we probably need to set something different here.
             elif results in (WARNINGS, FAILURE):
                 log.info("Marking task %s as failed", taskid)
                 self.tc_queue.reportFailed(taskid, runid)
-                msg.ack()
+                if not msg.acknowledged:
+                    msg.ack()
                 self.bbb_db.deleteBuildRequest(brid)
             # Should never be set for builds, but just in case...
             elif results == SKIPPED:
                 log.info("WEIRD: Build result is SKIPPED, this shouldn't be possible...")
-                msg.ack()
+                if not msg.acknowledged:
+                    msg.ack()
             elif results == EXCEPTION:
                 log.info("Marking task %s as malformed payload exception", taskid)
                 self.tc_queue.reportException(taskid, runid, {"reason": "malformed-payload"})
-                msg.ack()
+                if not msg.acknowledged:
+                    msg.ack()
                 self.bbb_db.deleteBuildRequest(brid)
             elif results == RETRY:
                 log.info("Marking task %s as malformed payload exception and rerunning", taskid)
@@ -194,22 +195,25 @@ class BuildbotListener(ListenerService):
                 # using worker-shutdown would probably be better for treeherder, because
                 # the buildbot and TC states would line up better.
                 self.tc_queue.reportException(taskid, runid, {"reason": "malformed-payload"})
-                msg.ack()
+                if not msg.acknowledged:
+                    msg.ack()
                 # TODO: runid might be wrong for the rerun for a period of time because we don't update it
                 # until the TCListener gets the task-pending event. Maybe we should update it here too/instead?
                 self.tc_queue.rerunTask(taskid)
             elif results == CANCELLED:
                 log.info("Marking task %s as cancelled", taskid)
                 self.tc_queue.cancelTask(taskid)
-                msg.ack()
+                if not msg.acknowledged:
+                    msg.ack()
                 self.bbb_db.deleteBuildRequest(brid)
             else:
                 log.info("WEIRD: Got unknown results %s, ignoring it...", results)
-                msg.ack()
+                if not msg.acknowledged:
+                    msg.ack()
 
         # If everything went well and the message hasn't been acked, do it. This could
         # happen if any of the "WEIRD" conditions are hit in every iteration of the loop
-        if not acked:
+        if not msg.acknowledged:
             msg.ack()
 
 class Reflector(ServiceBase):
