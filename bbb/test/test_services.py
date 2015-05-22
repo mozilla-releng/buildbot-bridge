@@ -433,6 +433,10 @@ class TestTCListener(unittest.TestCase):
             "created": 50,
             "payload": {
                 "buildername": "builder good name",
+                "sourcestamp": {
+                    "branch": "https://hg.mozilla.org/integration/mozilla-inbound/",
+                    "revision": "abcdef123456",
+                },
             },
         }
         self.tclistener.handlePending(data, Mock())
@@ -476,6 +480,10 @@ class TestTCListener(unittest.TestCase):
             "created": 20,
             "payload": {
                 "buildername": "builder good name",
+                "sourcestamp": {
+                    "branch": "https://hg.mozilla.org/integration/mozilla-inbound/",
+                    "revision": "abcdef123456",
+                },
             },
         }
 
@@ -502,6 +510,10 @@ class TestTCListener(unittest.TestCase):
             "created": 20,
             "payload": {
                 "buildername": "builder bad name",
+                "sourcestamp": {
+                    "branch": "https://hg.mozilla.org/integration/mozilla-inbound/",
+                    "revision": "abcdef123456",
+                },
             },
         }
         self.tclistener.handlePending(data, Mock())
