@@ -1,6 +1,7 @@
 from collections import namedtuple
 import json
 import time
+from urlparse import urlparse
 
 import arrow
 from kombu import Connection, Queue, Exchange
@@ -190,6 +191,11 @@ class BuildbotDb(object):
 
     def createSourceStamp(self, sourcestamp={}):
         branch = sourcestamp.get('branch')
+        # Branches from Taskcluster usually come in as a full URL.
+        # Sourcestamps need the "short" version of the branch, which is
+        # path component of the URL. Eg: "integration/mozilla-inbound"
+        if "://" in branch:
+            branch = urlparse(branch).path.strip("/")
         revision = sourcestamp.get('revision')
         repository = sourcestamp.get('repository', '')
         project = sourcestamp.get('project', '')
