@@ -43,6 +43,9 @@ class SelfserveClient(object):
         self._do_request("DELETE", url)
 
     def cancelBuildRequest(self, branch, brid):
+        # TODO: these (and maybe builds) will get 404s if cancellation happens
+        # too soon after scheduling. not sure why, maybe it takes time for buildapi
+        # or something else to become aware of their existence
         url = "%s/request/%s" % (branch, brid)
         self._do_request("DELETE", url)
 
