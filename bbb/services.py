@@ -15,6 +15,18 @@ log = logging.getLogger(__name__)
 # Buildbot status'- these must match http://mxr.mozilla.org/build/source/buildbot/master/buildbot/status/builder.py#25
 SUCCESS, WARNINGS, FAILURE, SKIPPED, EXCEPTION, RETRY, CANCELLED = range(7)
 
+def allow_builder(buildername, allowed_builders):
+    """Checks "buildername" against list of "allowed_builders" patterns. If
+    "buildername" matches any of them, it is considered to be allowed and this
+    function returns True. Otherwise, returns False."""
+    for allowed in allowed_builders:
+        if re.match(allowed, buildername):
+            log.debug("Builder %s matches an allowed pattern", buildername)
+            return True
+    log.debug("Builder %s does not match any pattern, ignoring it", buildername)
+    return False
+
+
 class BuildbotListener(ListenerService):
     """Listens for messages from Buildbot and responds appropriately.
     Currently handles the following types of events:
@@ -55,12 +67,7 @@ class BuildbotListener(ListenerService):
         master = data["_meta"]["master_name"]
         incarnation = data["_meta"]["master_incarnation"]
 
-        for allowed in self.allowed_builders:
-            if re.match(allowed, buildername):
-                log.debug("Builder %s matches an allowed pattern", buildername)
-                break
-        else:
-            log.debug("Builder %s does not match any pattern, ignoring it", buildername)
+        if not allow_builder(buildername, self.allowed_builders):
             msg.ack()
             return
 
@@ -131,12 +138,8 @@ class BuildbotListener(ListenerService):
             return
 
         buildername = data["payload"]["build"]["builderName"]
-        for allowed in self.allowed_builders:
-            if re.match(allowed, buildername):
-                log.debug("Builder %s matches an allowed pattern", buildername)
-                break
-        else:
-            log.debug("Builder %s does not match any pattern, ignoring it", buildername)
+
+        if not allow_builder(buildername, self.allowed_builders):
             msg.ack()
             return
 
@@ -176,7 +179,8 @@ class BuildbotListener(ListenerService):
                 self.bbb_db.deleteBuildRequest(brid)
             # Should never be set for builds, but just in case...
             elif results == SKIPPED:
-                pass
+                log.info("WEIRD: Build result is SKIPPED, this shouldn't be possible...")
+                msg.ack()
             elif results == EXCEPTION:
                 log.info("Marking task %s as malformed payload exception", taskid)
                 self.tc_queue.reportException(taskid, runid, {"reason": "malformed-payload"})
@@ -199,9 +203,12 @@ class BuildbotListener(ListenerService):
                 self.tc_queue.cancelTask(taskid)
                 msg.ack()
                 self.bbb_db.deleteBuildRequest(brid)
+            else:
+                log.info("WEIRD: Got unknown results %s, ignoring it...", results)
+                msg.ack()
 
         # If everything went well and the message hasn't been acked, do it. This could
-        # happen if the "WEIRD" conditions is hit in every iteration of the loop
+        # happen if any of the "WEIRD" conditions are hit in every iteration of the loop
         if not acked:
             msg.ack()
 
@@ -353,12 +360,8 @@ class TCListener(ListenerService):
         # If the buildername in the payload of the Task doesn't match any of
         # allowed patterns, we can't do anything!
         buildername = tc_task["payload"].get("buildername")
-        for allowed in self.allowed_builders:
-            if re.match(allowed, buildername):
-                log.debug("Builder %s matches an allowed pattern", buildername)
-                break
-        else:
-            log.info("Builder %s does not match any pattern, rejecting it", buildername)
+
+        if not allow_builder(buildername, self.allowed_builders):
             # malformed-payload is the most accurate TC status for this situation
             # but we can't use reportException for cancelling pending tasks,
             # so this will show up as "cancelled" on TC.
