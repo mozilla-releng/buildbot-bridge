@@ -159,15 +159,11 @@ class BuildbotListener(ListenerService):
             try:
                 createJsonArtifact(self.tc_queue, taskid, runid, "public/properties.json", properties, expires)
             except TaskclusterRestFailure as e:
-                log.exception("Caught exception when creating an artifact for %s", taskid)
-                if e.status_code == 400:
-                    log.info("Got client error when creating artifact for %s, not retrying...", taskid)
-                    if not msg.acknowledged:
-                        msg.ack()
-                else:
-                    # Raising will cause this message to get requeued, and the next
-                    # consumer to pick it up will retry the artifact creation.
-                    raise
+                # Probably tried to create an artifact for a completed job. This can be reworked
+                # after bug 1148860 is fixed.
+                log.exception("Caught exception when creating an artifact for %s, not retrying...", taskid)
+                if not msg.acknowledged:
+                    msg.ack()
 
             # Once we've updated Taskcluster with the resolution we're past the
             # point of no return. Even if something goes wrong afterwards we
