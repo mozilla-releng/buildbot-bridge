@@ -156,7 +156,18 @@ class BuildbotListener(ListenerService):
             # Attach properties as artifacts
             log.info("Attaching properties to task %s", taskid)
             expires = arrow.now().replace(weeks=1).isoformat()
-            createJsonArtifact(self.tc_queue, taskid, runid, "public/properties.json", properties, expires)
+            try:
+                createJsonArtifact(self.tc_queue, taskid, runid, "public/properties.json", properties, expires)
+            except TaskclusterRestFailure as e:
+                log.exception("Caught exception when creating an artifact for %s", taskid)
+                if e.status_code == 400:
+                    log.info("Got client error when creating artifact for %s, not retrying...", taskid)
+                    if not msg.acknowledged:
+                        msg.ack()
+                else:
+                    # Raising will cause this message to get requeued, and the next
+                    # consumer to pick it up will retry the artifact creation.
+                    raise
 
             # Once we've updated Taskcluster with the resolution we're past the
             # point of no return. Even if something goes wrong afterwards we
