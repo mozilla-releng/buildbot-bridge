@@ -398,6 +398,7 @@ class TestTCListener(unittest.TestCase):
                     "accessToken": "fake",
                 }
             },
+            selfserve_url="fake",
             pulse_host="fake",
             pulse_user="fake",
             pulse_password="fake",
@@ -413,7 +414,9 @@ class TestTCListener(unittest.TestCase):
         # want to actually talk to TC, just check if the calls that would've
         # been made are correct
         self.tclistener.tc_queue = Mock()
+        self.tclistener.selfserve = Mock()
         self.tasks = self.tclistener.bbb_db.tasks_table
+        self.buildbot_db = self.tclistener.buildbot_db.db
 
     @patch("arrow.now")
     def testHandlePendingNewTask(self, fake_now):
@@ -430,6 +433,10 @@ class TestTCListener(unittest.TestCase):
             "created": 50,
             "payload": {
                 "buildername": "builder good name",
+                "sourcestamp": {
+                    "branch": "https://hg.mozilla.org/integration/mozilla-inbound/",
+                    "revision": "abcdef123456",
+                },
             },
         }
         self.tclistener.handlePending(data, Mock())
@@ -473,6 +480,10 @@ class TestTCListener(unittest.TestCase):
             "created": 20,
             "payload": {
                 "buildername": "builder good name",
+                "sourcestamp": {
+                    "branch": "https://hg.mozilla.org/integration/mozilla-inbound/",
+                    "revision": "abcdef123456",
+                },
             },
         }
 
@@ -499,8 +510,131 @@ class TestTCListener(unittest.TestCase):
             "created": 20,
             "payload": {
                 "buildername": "builder bad name",
+                "sourcestamp": {
+                    "branch": "https://hg.mozilla.org/integration/mozilla-inbound/",
+                    "revision": "abcdef123456",
+                },
             },
         }
         self.tclistener.handlePending(data, Mock())
 
         self.assertEquals(self.tclistener.tc_queue.cancelTask.call_count, 1)
+
+    def testHandleExceptionCancellationBuildStarted(self):
+        taskid = makeTaskId()
+        self.buildbot_db.execute(sa.text("""
+INSERT INTO sourcestamps
+    (id, branch) VALUES (0, "foo");
+"""))
+        self.buildbot_db.execute(sa.text("""
+INSERT INTO buildsets
+    (id, sourcestampid, submitted_at) VALUES (0, 0, 2);
+"""))
+        self.buildbot_db.execute(sa.text("""
+INSERT INTO buildrequests
+    (id, buildsetid, buildername, submitted_at)
+    VALUES (0, 0, "good", 5);
+"""))
+        self.buildbot_db.execute(sa.text("""
+INSERT INTO builds
+    (id, number, brid, start_time)
+    VALUES (0, 0, 0, 40);"""))
+        self.tasks.insert().execute(
+            buildrequestId=0,
+            taskId=taskid,
+            runId=0,
+            createdDate=3,
+            processedDate=7,
+            takenUntil=80,
+        )
+
+        data = {"status": {
+            "taskId": taskid,
+            "runs": [
+                {
+                    "runId": 0,
+                    "state": "exception",
+                    "reasonResolved": "canceled",
+                },
+            ],
+        }}
+
+        self.tclistener.handleException(data, Mock())
+
+        self.assertEquals(self.tclistener.selfserve.cancelBuild.call_count, 1)
+        # BBB State shouldn't be deleted, because the BuildbotListener
+        # still needs to handle adding artifacts.
+        bbb_state = self.tasks.select().execute().fetchall()
+        self.assertEquals(len(bbb_state), 1)
+
+    def testHandleExceptionCancellationBuildNotStarted(self):
+        taskid = makeTaskId()
+        self.buildbot_db.execute(sa.text("""
+INSERT INTO sourcestamps
+    (id, branch) VALUES (0, "foo");
+"""))
+        self.buildbot_db.execute(sa.text("""
+INSERT INTO buildsets
+    (id, sourcestampid, submitted_at) VALUES (0, 0, 2);
+"""))
+        self.buildbot_db.execute(sa.text("""
+INSERT INTO buildrequests
+    (id, buildsetid, buildername, submitted_at)
+    VALUES (0, 0, "good", 5);
+"""))
+        self.tasks.insert().execute(
+            buildrequestId=0,
+            taskId=taskid,
+            runId=0,
+            createdDate=3,
+            processedDate=7,
+            takenUntil=80,
+        )
+
+        data = {"status": {
+            "taskId": taskid,
+            "runs": [
+                {
+                    "runId": 0,
+                    "state": "exception",
+                    "reasonResolved": "canceled",
+                },
+            ],
+        }}
+
+        self.tclistener.handleException(data, Mock())
+
+        self.assertEquals(self.tclistener.selfserve.cancelBuildRequest.call_count, 1)
+        # BBB State shouldn't be deleted, because the BuildbotListener
+        # still needs to handle adding artifacts.
+        bbb_state = self.tasks.select().execute().fetchall()
+        self.assertEquals(len(bbb_state), 1)
+
+    def testHandleExceptionOtherReason(self):
+        self.tasks.insert().execute(
+            buildrequestId=0,
+            taskId=makeTaskId(),
+            runId=0,
+            createdDate=3,
+            processedDate=7,
+            takenUntil=80,
+        )
+        data = {"status": {
+            "taskId": makeTaskId(),
+            "runs": [
+                {
+                    "runId": 0,
+                    "state": "exception",
+                    "reasonResolved": "malformed-payload",
+                },
+            ],
+        }}
+
+        self.tclistener.handleException(data, Mock())
+
+        # This event should be ignored by the handler, so we need to verify
+        # that none of our state has changed.
+        self.assertEquals(self.tclistener.selfserve.cancelBuild.call_count, 0)
+        self.assertEquals(self.tclistener.selfserve.cancelBuildRequest.call_count, 0)
+        bbb_state = self.tasks.select().execute().fetchall()
+        self.assertEquals(len(bbb_state), 1)

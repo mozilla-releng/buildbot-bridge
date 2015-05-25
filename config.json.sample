@@ -20,6 +20,7 @@
         "pulse_exchange_basename": "exchange/taskcluster-queue/v1",
         "worker_type": "buildbot-bridge",
         "provisioner_id": "buildbot-bridge",
+        "selfserve_url": "http://buildapi.pvt.build.mozilla.org/buildapi/self-serve",
         "logfile": "tclistener.log"
     },
     "bblistener": {

@@ -60,6 +60,7 @@ def main():
             pulse_password=config["pulse_password"],
             pulse_queue_basename=config["pulse_queue_basename"],
             pulse_exchange_basename=config["tclistener"]["pulse_exchange_basename"],
+            selfserve_url=config["tclistener"]["selfserve_url"],
             worker_type=config["tclistener"]["worker_type"],
             provisioner_id=config["tclistener"]["provisioner_id"],
             allowed_builders=config["allowed_builders"],
@@ -77,8 +78,6 @@ def main():
     signal(SIGTERM, handle_sigterm)
 
     log.info("Running %s service", args.service[0])
-    # TODO: If we're not going to run with supervisor or something similar,
-    # this should probably daemonize instead.
     try:
         service.start()
     except KeyboardInterrupt:

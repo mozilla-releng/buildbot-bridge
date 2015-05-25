@@ -5,6 +5,8 @@ from urlparse import urlparse
 
 import arrow
 from kombu import Connection, Queue, Exchange
+import requests
+from requests.exceptions import RequestException
 import sqlalchemy as sa
 import taskcluster
 
@@ -17,8 +19,40 @@ log = logging.getLogger(__name__)
 ListenerServiceEvent = namedtuple("ListenerServiceEvent", ("exchange", "routing_key", "callback", "queue_name"))
 
 
+class SelfserveClient(object):
+    def __init__(self, base_uri):
+        self.base_uri = base_uri
+
+    def _do_request(self, method, url):
+        # The private BuildAPI interface we use doesn't require auth but it
+        # _does_ require REMOTE_USER to be set.
+        # https://bugzilla.mozilla.org/show_bug.cgi?id=1156810 has additional
+        # background on this.
+        url = "%s/%s" % (self.base_uri, url)
+        log.debug("Making %s request to %s", method, url)
+        r = requests.request(method, url, headers={"X-Remote-User": "buildbot-bridge"})
+        # TODO: should we raise here? Maybe return the return code so the consumer
+        # can do something better.
+        try:
+            r.raise_for_status()
+        except RequestException:
+            log.exception("Caught exception:")
+
+    def cancelBuild(self, branch, id_):
+        url = "%s/build/%s" % (branch, id_)
+        self._do_request("DELETE", url)
+
+    def cancelBuildRequest(self, branch, brid):
+        # TODO: these (and maybe builds) will get 404s if cancellation happens
+        # too soon after scheduling. not sure why, maybe it takes time for buildapi
+        # or something else to become aware of their existence
+        url = "%s/request/%s" % (branch, brid)
+        self._do_request("DELETE", url)
+
+
 class TaskNotFound(Exception):
     pass
+
 
 class BBBDb(object):
     """Wrapper object for creation of and access to Buildbot Bridge database."""
@@ -143,6 +177,22 @@ class BuildbotDb(object):
 
     def getBuildsCount(self, brid):
         return self.builds_table.count().where(self.builds_table.c.brid==brid).execute().fetchall()[0][0]
+
+    def getBuildIds(self, brid):
+        q = sa.select([self.builds_table.c.id])\
+              .where(self.builds_table.c.brid==brid)
+        return [row[0] for row in self.db.execute(q).fetchall()]
+
+    def getBranch(self, brid):
+        q = sa.select([self.sourcestamps_table.c.branch])\
+              .where(self.sourcestamps_table.c.id==self.buildsets_table.c.sourcestampid)\
+              .where(self.buildsets_table.c.id==self.buildrequests_table.c.buildsetid)\
+              .where(self.buildrequests_table.c.id==brid)
+        r = self.db.execute(q).fetchall()
+        if r:
+            return r[0][0]
+        else:
+            return None
 
     def createSourceStamp(self, sourcestamp={}):
         branch = sourcestamp.get('branch').rstrip("/")
