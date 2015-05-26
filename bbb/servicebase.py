@@ -57,6 +57,13 @@ class TaskNotFound(Exception):
 class BBBDb(object):
     """Wrapper object for creation of and access to Buildbot Bridge database."""
     def __init__(self, uri):
+        # pool_size is set to 1 because each Bridge service is single threaded, so
+        # there's no reason to use more than one connection per app.
+        # pool_recycle is set to 60 to avoid MySQL timing out connections after
+        # awhile. Without it we'd get mysql disconnections after long idle periods.
+        # pool_timeout will cause SQLAlchemy to wait longer before giving up on new
+        # connections to the server. It's not strictly necessary, but it doesn't hurt.
+        #
         # MySQLdb's default cursor doesn't let you stream rows as you receive them.
         # Even if you use SQLAlchemy iterators, _all_ rows will be read before any
         # are returned. The SSCursor lets you stream data, but has the side effect
@@ -130,6 +137,13 @@ class BBBDb(object):
 class BuildbotDb(object):
     """Wrapper object for access to preexisting Buildbot scheduler database."""
     def __init__(self, uri, init_func=None):
+        # pool_size is set to 1 because each Bridge service is single threaded, so
+        # there's no reason to use more than one connection per app.
+        # pool_recycle is set to 60 to avoid MySQL timing out connections after
+        # awhile. Without it we'd get mysql disconnections after long idle periods.
+        # pool_timeout will cause SQLAlchemy to wait longer before giving up on new
+        # connections to the server. It's not strictly necessary, but it doesn't hurt.
+        #
         # MySQLdb's default cursor doesn't let you stream rows as you receive them.
         # Even if you use SQLAlchemy iterators, _all_ rows will be read before any
         # are returned. The SSCursor lets you stream data, but has the side effect
