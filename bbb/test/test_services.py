@@ -430,6 +430,9 @@ class TestTCListener(unittest.TestCase):
             "created": 50,
             "payload": {
                 "buildername": "builder good name",
+                "sourcestamp": {
+                    "branch": "http://foo.com/blah",
+                },
             },
         }
         self.tclistener.handlePending(data, Mock())
