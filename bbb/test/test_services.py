@@ -434,8 +434,7 @@ class TestTCListener(unittest.TestCase):
             "payload": {
                 "buildername": "builder good name",
                 "sourcestamp": {
-                    "branch": "https://hg.mozilla.org/integration/mozilla-inbound/",
-                    "revision": "abcdef123456",
+                    "branch": "http://foo.com/blah",
                 },
             },
         }
