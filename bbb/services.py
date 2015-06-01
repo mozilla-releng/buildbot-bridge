@@ -159,9 +159,9 @@ class BuildbotListener(ListenerService):
             try:
                 createJsonArtifact(self.tc_queue, taskid, runid, "public/properties.json", properties, expires)
             except TaskclusterRestFailure:
-                # Probably tried to create an artifact for a completed job. This can be reworked
+                # TODO: Probably tried to create an artifact for a completed job. This can be reworked
                 # after bug 1148860 is fixed.
-                log.exception("Caught exception when creating an artifact for %s, not retrying...", taskid)
+                log.exception("Caught exception when creating an artifact for %s (Task is probably already completed), not retrying...", taskid)
                 if not msg.acknowledged:
                     msg.ack()
 
