@@ -453,6 +453,49 @@ class TestTCListener(unittest.TestCase):
         buildrequests = self.tclistener.buildbot_db.buildrequests_table.select().execute().fetchall()
         self.assertEquals(buildrequests[0].id, 1)
         self.assertEquals(buildrequests[0].buildername, "builder good name")
+        self.assertEquals(buildrequests[0].priority, 0)
+        properties = self.tclistener.buildbot_db.buildset_properties_table.select().execute().fetchall()
+        self.assertEquals(len(properties), 1)
+        self.assertEquals(properties[0].property_name, "taskId")
+        self.assertEquals(json.loads(properties[0].property_value), [taskid, "bbb"])
+
+    @patch("arrow.now")
+    def testHandlePendingNewTaskWithHighPriority(self, fake_now):
+        taskid = makeTaskId()
+        data = {"status": {
+            "taskId": taskid,
+            "runs": [
+                {"runId": 0},
+            ],
+        }}
+
+        processed_date = fake_now.return_value = arrow.Arrow(2015, 4, 1)
+        self.tclistener.tc_queue.task.return_value = {
+            "created": 55,
+            "priority": "high",
+            "payload": {
+                "buildername": "i'm a good builder",
+                "sourcestamp": {
+                    "branch": "http://foo.com/doit",
+                },
+            },
+        }
+        self.tclistener.handlePending(data, Mock())
+
+        self.assertEquals(self.tclistener.tc_queue.task.call_count, 1)
+        bbb_state = self.tasks.select().execute().fetchall()
+        self.assertEquals(len(bbb_state), 1)
+        self.assertEquals(bbb_state[0].buildrequestId, 1)
+        self.assertEquals(bbb_state[0].taskId, taskid)
+        self.assertEquals(bbb_state[0].runId, 0)
+        self.assertEquals(bbb_state[0].createdDate, 55)
+        self.assertEquals(bbb_state[0].processedDate, processed_date.timestamp)
+        self.assertEquals(bbb_state[0].takenUntil, None)
+
+        buildrequests = self.tclistener.buildbot_db.buildrequests_table.select().execute().fetchall()
+        self.assertEquals(buildrequests[0].id, 1)
+        self.assertEquals(buildrequests[0].buildername, "i'm a good builder")
+        self.assertEquals(buildrequests[0].priority, 1)
         properties = self.tclistener.buildbot_db.buildset_properties_table.select().execute().fetchall()
         self.assertEquals(len(properties), 1)
         self.assertEquals(properties[0].property_name, "taskId")
