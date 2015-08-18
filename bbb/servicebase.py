@@ -269,9 +269,6 @@ class BuildbotDb(object):
         properties = payload.get('properties', {})
         # Always create a property for the taskId
         properties['taskId'] = taskid
-        # And for product, see bug 1195751 for background
-        if "product" not in properties:
-            properties["product"] = payload["product"]
         self.createBuildSetProperties(buildsetid, properties)
 
         # Create the buildrequest

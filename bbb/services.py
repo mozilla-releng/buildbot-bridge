@@ -389,7 +389,7 @@ class TCListener(ListenerService):
         # If the buildername in the payload of the Task doesn't match any of
         # allowed patterns, we can't do anything!
         buildername = tc_task["payload"].get("buildername")
-        product = tc_task["payload"].get("product")
+        product = tc_task["payload"].get("properties", {}).get("product")
 
         if not allow_builder(buildername, self.allowed_builders):
             log.info("Buildername %s in task %s is not part of allowed_builders whitelist, refusing to create BuildRequest", buildername, taskid)
@@ -408,7 +408,8 @@ class TCListener(ListenerService):
         # The script that the Bridge relies on to send build finished events
         # requires that "product" be set in the Buildbot Properties. If it's
         # not provided by the Task, we shouldn't accept the job because it's
-        # unlikely that we'll notice when its Build finishes.
+        # unlikely that we'll notice when its Build finishes. See bug 1195751
+        # for additional background.
         if not product:
             log.info("Task %s has no product set, refusing to create BuildRequest", taskid)
             self.tc_queue.cancelTask(taskid)

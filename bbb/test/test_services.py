@@ -432,7 +432,9 @@ class TestTCListener(unittest.TestCase):
             "created": 50,
             "payload": {
                 "buildername": "builder good name",
-                "product": "foo",
+                "properties": {
+                    "product": "foo",
+                },
                 "sourcestamp": {
                     "branch": "http://foo.com/blah",
                 },
@@ -509,7 +511,9 @@ class TestTCListener(unittest.TestCase):
             "created": 20,
             "payload": {
                 "buildername": "builder good name",
-                "product": "foo",
+                "properties": {
+                    "product": "foo",
+                },
                 "sourcestamp": {
                     "branch": "https://hg.mozilla.org/integration/mozilla-inbound/",
                     "revision": "abcdef123456",
