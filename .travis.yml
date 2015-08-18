@@ -10,4 +10,6 @@ install:
 
 script:
     - tox -e py27
+
+after_success:
     - tox -e py27-coveralls
