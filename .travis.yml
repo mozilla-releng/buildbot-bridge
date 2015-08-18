@@ -6,9 +6,8 @@ install:
     - sudo apt-add-repository -y ppa:travis-ci/sqlite3
     - sudo apt-get update
     - sudo apt-get install sqlite3
-    - python setup.py install
-    - pip install pyflakes nose mock
+    - travis_retry pip install tox==1.8
 
 script:
-    - pyflakes .
-    - nosetests
+    - tox -e py27
+    - tox -e py27-coveralls

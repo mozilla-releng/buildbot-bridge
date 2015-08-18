@@ -15,6 +15,7 @@ log = logging.getLogger(__name__)
 # Buildbot status'- these must match http://mxr.mozilla.org/build/source/buildbot/master/buildbot/status/builder.py#25
 SUCCESS, WARNINGS, FAILURE, SKIPPED, EXCEPTION, RETRY, CANCELLED = range(7)
 
+
 def allow_builder(buildername, allowed_builders):
     """Checks "buildername" against list of "allowed_builders" patterns. If
     "buildername" matches any of them, it is considered to be allowed and this
@@ -236,6 +237,7 @@ class BuildbotListener(ListenerService):
         if not msg.acknowledged:
             msg.ack()
 
+
 class Reflector(ServiceBase):
     """Reflects Task state into Taskcluster based on the state of the
     Buildbot and BBB databases. Each task may be in one of the following
@@ -376,6 +378,8 @@ class TCListener(ListenerService):
         In the case of the latter, this method updates the existing row in the
         BBB database to start tracking the new Run."""
 
+        log.debug("Handling task-pending event: %s", data)
+
         taskid = data["status"]["taskId"]
         runid = data["status"]["runs"][-1]["runId"]
 
@@ -385,8 +389,10 @@ class TCListener(ListenerService):
         # If the buildername in the payload of the Task doesn't match any of
         # allowed patterns, we can't do anything!
         buildername = tc_task["payload"].get("buildername")
+        product = tc_task["payload"].get("product")
 
         if not allow_builder(buildername, self.allowed_builders):
+            log.info("Buildername %s in task %s is not part of allowed_builders whitelist, refusing to create BuildRequest", buildername, taskid)
             # malformed-payload is the most accurate TC status for this situation
             # but we can't use reportException for cancelling pending tasks,
             # so this will show up as "cancelled" on TC.
@@ -396,6 +402,18 @@ class TCListener(ListenerService):
             # because the Task has been cancelled.
             if our_task:
                 # TODO: Should we kill the running Build?
+                self.bbb_db.deleteBuildRequest(our_task.buildrequestId)
+            return
+
+        # The script that the Bridge relies on to send build finished events
+        # requires that "product" be set in the Buildbot Properties. If it's
+        # not provided by the Task, we shouldn't accept the job because it's
+        # unlikely that we'll notice when its Build finishes.
+        if not product:
+            log.info("Task %s has no product set, refusing to create BuildRequest", taskid)
+            self.tc_queue.cancelTask(taskid)
+            msg.ack()
+            if our_task:
                 self.bbb_db.deleteBuildRequest(our_task.buildrequestId)
             return
 

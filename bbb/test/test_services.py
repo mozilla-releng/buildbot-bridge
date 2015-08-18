@@ -1,4 +1,3 @@
-import json
 from mock import Mock, patch
 import unittest
 
@@ -108,13 +107,13 @@ INSERT INTO builds
                 "build": {
                     "number": 3,
                     "builderName": "good",
-                 }
-             },
+                },
+            },
             "_meta": {
                 "master_name": "a",
                 "master_incarnation": "b",
             },
-         }
+        }
         self.bblistener.tc_queue.claimTask.return_value = {"takenUntil": 80}
         self.bblistener.handleStarted(data, Mock())
 
@@ -433,6 +432,7 @@ class TestTCListener(unittest.TestCase):
             "created": 50,
             "payload": {
                 "buildername": "builder good name",
+                "product": "foo",
                 "sourcestamp": {
                     "branch": "http://foo.com/blah",
                 },
@@ -454,9 +454,39 @@ class TestTCListener(unittest.TestCase):
         self.assertEquals(buildrequests[0].id, 1)
         self.assertEquals(buildrequests[0].buildername, "builder good name")
         properties = self.tclistener.buildbot_db.buildset_properties_table.select().execute().fetchall()
-        self.assertEquals(len(properties), 1)
-        self.assertEquals(properties[0].property_name, "taskId")
-        self.assertEquals(json.loads(properties[0].property_value), [taskid, "bbb"])
+        self.assertItemsEqual(properties, [
+            (1, u"taskId", u'["{}", "bbb"]'.format(taskid)),
+            (1, u"product", u'["foo", "bbb"]'),
+        ])
+
+    def testHandlePendingNewTaskWithoutProduct(self):
+        """Tests that new tasks that don't set product don't create
+           build requests, and resolve the task with a malformed-payload
+           error."""
+
+        taskid = makeTaskId()
+        data = {"status": {
+            "taskId": taskid,
+            "runs": [
+                {"runId": 0},
+            ],
+        }}
+
+        self.tclistener.tc_queue.task.return_value = {
+            "created": 50,
+            "payload": {
+                "buildername": "builder good name",
+                "sourcestamp": {
+                    "branch": "http://foo.com/blah",
+                },
+            },
+        }
+        self.tclistener.handlePending(data, Mock())
+
+        self.assertEquals(self.tclistener.tc_queue.task.call_count, 1)
+        self.assertEquals(self.tasks.count().execute().fetchone()[0], 0)
+        self.assertEquals(self.tclistener.buildbot_db.buildrequests_table.count().execute().fetchone()[0], 0)
+        self.assertEquals(self.tclistener.tc_queue.cancelTask.call_count, 1)
 
     def testHandlePendingUpdateRunId(self):
         taskid = makeTaskId()
@@ -479,6 +509,7 @@ class TestTCListener(unittest.TestCase):
             "created": 20,
             "payload": {
                 "buildername": "builder good name",
+                "product": "foo",
                 "sourcestamp": {
                     "branch": "https://hg.mozilla.org/integration/mozilla-inbound/",
                     "revision": "abcdef123456",

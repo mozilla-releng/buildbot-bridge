@@ -1,5 +1,6 @@
 import sqlalchemy as sa
 
+
 def makeSchedulerDb(db):
     db.execute(sa.text("""
 CREATE TABLE buildrequests (
@@ -54,4 +55,3 @@ CREATE TABLE buildsets (
                 `results` SMALLINT
             );
 """))
-
