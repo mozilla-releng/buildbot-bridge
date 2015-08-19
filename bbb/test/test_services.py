@@ -457,9 +457,10 @@ class TestTCListener(unittest.TestCase):
         self.assertEquals(buildrequests[0].buildername, "builder good name")
         self.assertEquals(buildrequests[0].priority, 0)
         properties = self.tclistener.buildbot_db.buildset_properties_table.select().execute().fetchall()
-        self.assertEquals(len(properties), 1)
-        self.assertEquals(properties[0].property_name, "taskId")
-        self.assertEquals(json.loads(properties[0].property_value), [taskid, "bbb"])
+        self.assertItemsEqual(properties, [
+            (1, u"taskId", u'["{}", "bbb"]'.format(taskid)),
+            (1, u"product", u'["foo", "bbb"]'),
+        ])
 
     @patch("arrow.now")
     def testHandlePendingNewTaskWithHighPriority(self, fake_now):
@@ -477,6 +478,9 @@ class TestTCListener(unittest.TestCase):
             "priority": "high",
             "payload": {
                 "buildername": "i'm a good builder",
+                "properties": {
+                    "product": "foo",
+                },
                 "sourcestamp": {
                     "branch": "http://foo.com/doit",
                 },
