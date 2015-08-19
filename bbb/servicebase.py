@@ -273,7 +273,9 @@ class BuildbotDb(object):
 
         # Create the buildrequest
         buildername = payload['buildername']
-        priority = payload.get('priority', 0)
+        priority = 0
+        if task.get("priority") == "high":
+            priority = 1
         q = self.buildrequests_table.insert().values(
             buildsetid=buildsetid,
             buildername=buildername,

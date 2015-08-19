@@ -5,7 +5,7 @@ except:
 
 setup(
     name="bbb",
-    version="1.0",
+    version="1.1",
     description="Buildbot <-> Taskcluster Bridge",
     author="Mozilla Release Engineering",
     packages=["bbb"],
