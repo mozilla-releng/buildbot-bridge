@@ -79,7 +79,8 @@ class BBBDb(object):
             self.db = sa.create_engine(uri, pool_size=1, pool_recycle=60)
 
         metadata = sa.MetaData(self.db)
-        self.tasks_table = sa.Table('tasks', metadata,
+        self.tasks_table = sa.Table(
+            'tasks', metadata,
             sa.Column('buildrequestId', sa.Integer, primary_key=True),
             sa.Column('taskId', sa.String(32), index=True),
             sa.Column('runId', sa.Integer),
@@ -171,7 +172,7 @@ class BuildbotDb(object):
 
     def isBuildRequestComplete(self, brid):
         q = sa.select([self.buildrequests_table.c.complete])\
-              .where(self.buildrequests_table.c.id==brid)
+              .where(self.buildrequests_table.c.id == brid)
         return bool(self.db.execute(q).fetchall()[0][0])
 
     def getBuildRequests(self, buildnumber, buildername, claimed_by_name, claimed_by_incarnation):
@@ -179,29 +180,29 @@ class BuildbotDb(object):
         # TODO: Using complete=0 sucks a bit. If builds complete before we process
         # the build started event, this query doesn't work.
         q = sa.select([self.buildrequests_table.c.id])\
-              .where(self.builds_table.c.number==buildnumber)\
-              .where(self.buildrequests_table.c.id==self.builds_table.c.brid)\
-              .where(self.buildrequests_table.c.complete==0)\
-              .where(self.buildrequests_table.c.buildername==buildername)\
-              .where(self.buildrequests_table.c.claimed_by_name==claimed_by_name)\
-              .where(self.buildrequests_table.c.claimed_by_incarnation==claimed_by_incarnation)
+              .where(self.builds_table.c.number == buildnumber)\
+              .where(self.buildrequests_table.c.id == self.builds_table.c.brid)\
+              .where(self.buildrequests_table.c.complete == 0)\
+              .where(self.buildrequests_table.c.buildername == buildername)\
+              .where(self.buildrequests_table.c.claimed_by_name == claimed_by_name)\
+              .where(self.buildrequests_table.c.claimed_by_incarnation == claimed_by_incarnation)
         ret = self.db.execute(q).fetchall()
         log.debug("getBuildRequests Query took %f seconds", time.time() - now)
         return ret
 
     def getBuildsCount(self, brid):
-        return self.builds_table.count().where(self.builds_table.c.brid==brid).execute().fetchall()[0][0]
+        return self.builds_table.count().where(self.builds_table.c.brid == brid).execute().fetchall()[0][0]
 
     def getBuildIds(self, brid):
         q = sa.select([self.builds_table.c.id])\
-              .where(self.builds_table.c.brid==brid)
+              .where(self.builds_table.c.brid == brid)
         return [row[0] for row in self.db.execute(q).fetchall()]
 
     def getBranch(self, brid):
         q = sa.select([self.sourcestamps_table.c.branch])\
-              .where(self.sourcestamps_table.c.id==self.buildsets_table.c.sourcestampid)\
-              .where(self.buildsets_table.c.id==self.buildrequests_table.c.buildsetid)\
-              .where(self.buildrequests_table.c.id==brid)
+              .where(self.sourcestamps_table.c.id == self.buildsets_table.c.sourcestampid)\
+              .where(self.buildsets_table.c.id == self.buildrequests_table.c.buildsetid)\
+              .where(self.buildrequests_table.c.id == brid)
         r = self.db.execute(q).fetchall()
         if r:
             return r[0][0]

@@ -1,4 +1,7 @@
-from setuptools import setup
+try:
+    from setuptools import setup
+except:
+    from distutils.core import setup
 
 setup(
     name="bbb",
@@ -20,5 +23,11 @@ setup(
         "kombu",
         "redo",
         "mysql-python",
+    ],
+    tests_require=[
+        "mock",
+        "flake8",
+        "pytest",
+        "pytest-cov",
     ],
 )

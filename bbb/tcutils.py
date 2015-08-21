@@ -40,7 +40,7 @@ def createJsonArtifact(queue, taskid, runid, name, data, expires):
         log.error("couldn't upload artifact to s3")
         raise IOError("couldn't upload artifact to s3")
 
+
 def makeTaskId():
     """Used in testing to generate task ids without talking to TaskCluster."""
     return b64encode(uuid4().bytes).replace("+", "-").replace("/", "-").rstrip("=")
-
