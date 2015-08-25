@@ -411,8 +411,6 @@ class TCListener(ListenerService):
                 self.bbb_db.deleteBuildRequest(our_task.buildrequestId)
             return
 
-        product = tc_task["payload"].get("properties", {}).get("product")
-
         # When Buildbot Builds end up in a RETRY state they are automatically
         # retried against the same BuildRequest. The BuildbotListener reflects
         # this into Taskcluster be calling rerunTask, which creates a new Run
