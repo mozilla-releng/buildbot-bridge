@@ -23,11 +23,14 @@ setup(
         "kombu",
         "redo",
         "mysql-python",
+        "jsonschema",
+        "PyYAML",
     ],
     tests_require=[
         "mock",
         "flake8",
         "pytest",
         "pytest-cov",
+        "pytest-capturelog",
     ],
 )
