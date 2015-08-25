@@ -8,12 +8,15 @@ setup(
     version="1.2",
     description="Buildbot <-> Taskcluster Bridge",
     author="Mozilla Release Engineering",
-    packages=["bbb"],
+    packages=["bbb", "bbb.schemas"],
     entry_points={
         "console_scripts": [
             "buildbot-bridge = bbb.runner:main",
         ],
     },
+    # Package contains data files -> not safe.
+    zip_safe=False,
+    include_package_data=True,
     install_requires=[
         # Because taskcluster hard pins this version...
         "requests==2.4.3",
