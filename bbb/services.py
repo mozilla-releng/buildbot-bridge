@@ -1,9 +1,13 @@
+from os import path
 import re
 import time
 
 import arrow
+from jsonschema import Draft4Validator
 from taskcluster.exceptions import TaskclusterRestFailure
+import yaml
 
+from . import schemas
 from .servicebase import ListenerService, ServiceBase, ListenerServiceEvent, SelfserveClient, TaskNotFound
 from .tcutils import createJsonArtifact
 from .timeutils import parseDateString
@@ -354,6 +358,9 @@ class TCListener(ListenerService):
                  provisioner_id, selfserve_url, allowed_builders=(), *args, **kwargs):
         self.allowed_builders = allowed_builders
         self.selfserve = SelfserveClient(selfserve_url)
+        self.payload_schema = Draft4Validator(
+            yaml.load(open(path.join(path.dirname(schemas.__file__), "payload.yml")))
+        )
         events = (
             ListenerServiceEvent(
                 queue_name="%s/task-pending" % pulse_queue_basename,
@@ -386,13 +393,12 @@ class TCListener(ListenerService):
         tc_task = self.tc_queue.task(taskid)
         our_task = self.bbb_db.getTask(taskid)
 
-        # If the buildername in the payload of the Task doesn't match any of
-        # allowed patterns, we can't do anything!
         buildername = tc_task["payload"].get("buildername")
-        product = tc_task["payload"].get("properties", {}).get("product")
+        if not self.payload_schema.is_valid(tc_task["payload"]) or not allow_builder(buildername, self.allowed_builders):
+            log.info("Payload is invalid for task %s, refusing to create BuildRequest", taskid)
+            for e in self.payload_schema.iter_errors(tc_task["payload"]):
+                log.debug(e.message)
 
-        if not allow_builder(buildername, self.allowed_builders):
-            log.info("Buildername %s in task %s is not part of allowed_builders whitelist, refusing to create BuildRequest", buildername, taskid)
             # malformed-payload is the most accurate TC status for this situation
             # but we can't use reportException for cancelling pending tasks,
             # so this will show up as "cancelled" on TC.
@@ -402,19 +408,6 @@ class TCListener(ListenerService):
             # because the Task has been cancelled.
             if our_task:
                 # TODO: Should we kill the running Build?
-                self.bbb_db.deleteBuildRequest(our_task.buildrequestId)
-            return
-
-        # The script that the Bridge relies on to send build finished events
-        # requires that "product" be set in the Buildbot Properties. If it's
-        # not provided by the Task, we shouldn't accept the job because it's
-        # unlikely that we'll notice when its Build finishes. See bug 1195751
-        # for additional background.
-        if not product:
-            log.info("Task %s has no product set, refusing to create BuildRequest", taskid)
-            self.tc_queue.cancelTask(taskid)
-            msg.ack()
-            if our_task:
                 self.bbb_db.deleteBuildRequest(our_task.buildrequestId)
             return
 

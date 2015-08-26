@@ -1,0 +1,77 @@
+id:          http://schemas.taskcluster.net/buildbot-bridge/v1/payload.json
+$schema:     http://json-schema.org/draft-04/schema#
+title:       Buildbot Bridge Task Payload
+description: Description of the proper format of a Buildbot Bridge Task payload.
+type:        object
+required:
+    - buildername
+    - properties
+additionalProperties: false
+properties:
+    buildername:
+        title:       Buildbot Builder Name
+        description: |
+            This Builder must exist on the Buildbot master that the Bridge
+            is configured to work with. If not, a BuildRequest will be
+            created for a non-existant Builder, and the Task will never run.
+        type:        string
+        minLength:   1
+    sourcestamp:
+        title:       Buildbot SourceStamp
+        description: |
+            The data to inject into the Buildbot SourceStamp.
+        type:        object
+        required:
+            - branch
+        additionalProperties: false
+        properties:
+            branch:
+                title:       Branch
+                description: |
+                    The "branch" of the build (aka, repo path), eg:
+                    releases/mozilla-beta. Full URL can also be used, but it
+                    will be shortened to repo path. Eg:
+                    http://hg.mozilla.org/releases/mozilla-beta becomes
+                    mozilla-beta.
+                type:        string
+                minLength:   3
+            revision:
+                title:       Revision
+                description: |
+                    The revision of the build. Any valid identifier can be
+                    used, eg: abcdef123456, SOME_TAG_THAT_EXISTS, branchname.
+                type:        string
+                minLength:   1
+            repository:
+                title:       Repository
+                description: SourceStamp repository. Generally unused.
+                type:        string
+                minLength:   1
+            project:
+                title:       Project
+                description: SourceStamp project. Generally unused.
+                type:        string
+                minLength:   1
+    properties:
+        title:       Buildbot Properties
+        description: |
+            Key/Value pairs of Buildbot Properties to include with the Build
+            Request, and eventually passed onto the build. "product" must be
+            included as a property.
+        type:        object
+        required:
+            # The script that the Bridge relies on to send build finished events
+            # requires that "product" be set in the Buildbot Properties. If it's
+            # not provided by the Task, we shouldn't accept the job because it's
+            # unlikely that we'll notice when its Build finishes. See bug 1195751
+            # for additional background.
+            - product
+        additionalProperties: true
+        properties:
+            product:
+                title:       Product Name
+                description: |
+                    Name of the product this Task is for. Required by Buildbot's
+                    postrun script.
+                type:        string
+                minLength:   1

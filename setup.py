@@ -5,15 +5,18 @@ except:
 
 setup(
     name="bbb",
-    version="1.2",
+    version="1.3",
     description="Buildbot <-> Taskcluster Bridge",
     author="Mozilla Release Engineering",
-    packages=["bbb"],
+    packages=["bbb", "bbb.schemas"],
     entry_points={
         "console_scripts": [
             "buildbot-bridge = bbb.runner:main",
         ],
     },
+    # Package contains data files -> not safe.
+    zip_safe=False,
+    include_package_data=True,
     install_requires=[
         # Because taskcluster hard pins this version...
         "requests==2.4.3",
@@ -23,11 +26,14 @@ setup(
         "kombu",
         "redo",
         "mysql-python",
+        "jsonschema",
+        "PyYAML",
     ],
     tests_require=[
         "mock",
         "flake8",
         "pytest",
         "pytest-cov",
+        "pytest-capturelog",
     ],
 )
