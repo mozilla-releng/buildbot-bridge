@@ -1,4 +1,4 @@
-id:          http://payload.bbb/v1.schema
+id:          http://schemas.taskcluster.net/buildbot-bridge/v1/payload.json
 $schema:     http://json-schema.org/draft-04/schema#
 title:       Buildbot Bridge Task Payload
 description: Description of the proper format of a Buildbot Bridge Task payload.
