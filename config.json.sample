@@ -12,6 +12,9 @@
     "pulse_password": "foo",
     "pulse_queue_basename": "queue/foo",
 
+    "tc_worker_group": "buildbot-bridge",
+    "tc_worker_id": "buildbot-bridge",
+
     "allowed_builders": [
         ".*alder.*"
     ],
@@ -25,8 +28,6 @@
     },
     "bblistener": {
         "pulse_exchange": "exchange/build",
-        "tc_worker_group": "buildbot-bridge",
-        "tc_worker_id": "buildbot-bridge",
         "logfile": "bblistener.log"
     },
     "reflector": {

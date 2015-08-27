@@ -354,8 +354,11 @@ class TCListener(ListenerService):
     that needs to be watched."""
 
     def __init__(self, pulse_queue_basename, pulse_exchange_basename, worker_type,
-                 provisioner_id, selfserve_url, allowed_builders=(), *args, **kwargs):
+                 provisioner_id, worker_group, worker_id, selfserve_url,
+                 allowed_builders=(), *args, **kwargs):
         self.allowed_builders = allowed_builders
+        self.worker_group = worker_group
+        self.worker_id = worker_id
         self.selfserve = SelfserveClient(selfserve_url)
         self.payload_schema = Draft4Validator(
             yaml.load(open(path.join(path.dirname(schemas.__file__), "payload.yml")))
@@ -401,7 +404,11 @@ class TCListener(ListenerService):
             # malformed-payload is the most accurate TC status for this situation
             # but we can't use reportException for cancelling pending tasks,
             # so this will show up as "cancelled" on TC.
-            self.tc_queue.cancelTask(taskid)
+            self.tc_queue.claimTask(taskid, int(runid), {
+                "workerGroup": self.worker_group,
+                "workerId": self.worker_id,
+            })
+            self.tc_queue.reportException(taskid, runid, {"reason": "malformed-payload"})
             msg.ack()
             # If this Task is already in our database, we should delete it
             # because the Task has been cancelled.

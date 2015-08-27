@@ -63,6 +63,8 @@ def main():
             selfserve_url=config["tclistener"]["selfserve_url"],
             worker_type=config["tclistener"]["worker_type"],
             provisioner_id=config["tclistener"]["provisioner_id"],
+            worker_group=config["tc_worker_group"],
+            worker_id=config["tc_worker_id"],
             allowed_builders=config["allowed_builders"],
             **kwargs
         )

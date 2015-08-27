@@ -72,10 +72,10 @@ INSERT INTO builds
         self.bblistener.tc_queue.claimTask.return_value = {"takenUntil": 100}
         self.bblistener.handleStarted(data, Mock())
 
-        self.assertEquals(self.bblistener.tc_queue.claimTask.call_count, 1)
+        self.assertEqual(self.bblistener.tc_queue.claimTask.call_count, 1)
         bbb_state = self.tasks.select().execute().fetchall()
-        self.assertEquals(len(bbb_state), 1)
-        self.assertEquals(bbb_state[0].takenUntil, 100)
+        self.assertEqual(len(bbb_state), 1)
+        self.assertEqual(bbb_state[0].takenUntil, 100)
 
     def testHandleStartedMultipleBuildRequests(self):
         self.buildbot_db.execute(sa.text("""
@@ -117,11 +117,11 @@ INSERT INTO builds
         self.bblistener.tc_queue.claimTask.return_value = {"takenUntil": 80}
         self.bblistener.handleStarted(data, Mock())
 
-        self.assertEquals(self.bblistener.tc_queue.claimTask.call_count, 2)
+        self.assertEqual(self.bblistener.tc_queue.claimTask.call_count, 2)
         bbb_state = self.tasks.select().execute().fetchall()
-        self.assertEquals(len(bbb_state), 2)
-        self.assertEquals(bbb_state[0].takenUntil, 80)
-        self.assertEquals(bbb_state[1].takenUntil, 80)
+        self.assertEqual(len(bbb_state), 2)
+        self.assertEqual(bbb_state[0].takenUntil, 80)
+        self.assertEqual(bbb_state[1].takenUntil, 80)
 
     def testHandleStartedIgnoredBuilder(self):
         self.buildbot_db.execute(sa.text("""
@@ -147,7 +147,7 @@ INSERT INTO builds
         }
         self.bblistener.handleStarted(data, Mock())
 
-        self.assertEquals(self.bblistener.tc_queue.claimTask.call_count, 0)
+        self.assertEqual(self.bblistener.tc_queue.claimTask.call_count, 0)
 
     # TODO: tests for some error cases, like failing to contact TC, or maybe db operations failing
 
@@ -188,50 +188,50 @@ INSERT INTO builds
     def testHandleFinishedSuccess(self):
         self._handleFinishedTest(SUCCESS)
 
-        self.assertEquals(self.bblistener.tc_queue.createArtifact.call_count, 1)
-        self.assertEquals(self.bblistener.tc_queue.reportCompleted.call_count, 1)
+        self.assertEqual(self.bblistener.tc_queue.createArtifact.call_count, 1)
+        self.assertEqual(self.bblistener.tc_queue.reportCompleted.call_count, 1)
         # Build and Task are done - should be deleted from our db.
-        self.assertEquals(self.tasks.count().execute().fetchone()[0], 0)
+        self.assertEqual(self.tasks.count().execute().fetchone()[0], 0)
 
     def testHandleFinishedWarnings(self):
         self._handleFinishedTest(WARNINGS)
 
-        self.assertEquals(self.bblistener.tc_queue.createArtifact.call_count, 1)
-        self.assertEquals(self.bblistener.tc_queue.reportFailed.call_count, 1)
+        self.assertEqual(self.bblistener.tc_queue.createArtifact.call_count, 1)
+        self.assertEqual(self.bblistener.tc_queue.reportFailed.call_count, 1)
         # Build and Task are done - should be deleted from our db.
-        self.assertEquals(self.tasks.count().execute().fetchone()[0], 0)
+        self.assertEqual(self.tasks.count().execute().fetchone()[0], 0)
 
     def testHandleFinishedFailed(self):
         self._handleFinishedTest(FAILURE)
 
-        self.assertEquals(self.bblistener.tc_queue.createArtifact.call_count, 1)
-        self.assertEquals(self.bblistener.tc_queue.reportFailed.call_count, 1)
+        self.assertEqual(self.bblistener.tc_queue.createArtifact.call_count, 1)
+        self.assertEqual(self.bblistener.tc_queue.reportFailed.call_count, 1)
         # Build and Task are done - should be deleted from our db.
-        self.assertEquals(self.tasks.count().execute().fetchone()[0], 0)
+        self.assertEqual(self.tasks.count().execute().fetchone()[0], 0)
 
     def testHandleFinishedException(self):
         self._handleFinishedTest(EXCEPTION)
 
-        self.assertEquals(self.bblistener.tc_queue.createArtifact.call_count, 1)
-        self.assertEquals(self.bblistener.tc_queue.reportException.call_count, 1)
+        self.assertEqual(self.bblistener.tc_queue.createArtifact.call_count, 1)
+        self.assertEqual(self.bblistener.tc_queue.reportException.call_count, 1)
         # Build and Task are done - should be deleted from our db.
-        self.assertEquals(self.tasks.count().execute().fetchone()[0], 0)
+        self.assertEqual(self.tasks.count().execute().fetchone()[0], 0)
 
     def testHandleFinishedRetry(self):
         self._handleFinishedTest(RETRY)
 
-        self.assertEquals(self.bblistener.tc_queue.createArtifact.call_count, 1)
-        self.assertEquals(self.bblistener.tc_queue.reportException.call_count, 1)
+        self.assertEqual(self.bblistener.tc_queue.createArtifact.call_count, 1)
+        self.assertEqual(self.bblistener.tc_queue.reportException.call_count, 1)
         # Unlike other status, the BuildRequest is NOT finished if a RETRY is hit
-        self.assertEquals(self.tasks.count().execute().fetchone()[0], 1)
+        self.assertEqual(self.tasks.count().execute().fetchone()[0], 1)
 
     def testHandleFinishedCancelled(self):
         self._handleFinishedTest(CANCELLED)
 
-        self.assertEquals(self.bblistener.tc_queue.createArtifact.call_count, 1)
-        self.assertEquals(self.bblistener.tc_queue.cancelTask.call_count, 1)
+        self.assertEqual(self.bblistener.tc_queue.createArtifact.call_count, 1)
+        self.assertEqual(self.bblistener.tc_queue.cancelTask.call_count, 1)
         # Build and Task are done - should be deleted from our db.
-        self.assertEquals(self.tasks.count().execute().fetchone()[0], 0)
+        self.assertEqual(self.tasks.count().execute().fetchone()[0], 0)
 
     def testHandleFinishedIgnoredBuilder(self):
         self.buildbot_db.execute(sa.text("""
@@ -252,11 +252,11 @@ INSERT INTO builds
         }}}
         self.bblistener.handleFinished(data, Mock())
 
-        self.assertEquals(self.bblistener.tc_queue.createArtifact.call_count, 0)
-        self.assertEquals(self.bblistener.tc_queue.cancelTask.call_count, 0)
-        self.assertEquals(self.bblistener.tc_queue.reportException.call_count, 0)
-        self.assertEquals(self.bblistener.tc_queue.reportFailed.call_count, 0)
-        self.assertEquals(self.bblistener.tc_queue.reportCompleted.call_count, 0)
+        self.assertEqual(self.bblistener.tc_queue.createArtifact.call_count, 0)
+        self.assertEqual(self.bblistener.tc_queue.cancelTask.call_count, 0)
+        self.assertEqual(self.bblistener.tc_queue.reportException.call_count, 0)
+        self.assertEqual(self.bblistener.tc_queue.reportFailed.call_count, 0)
+        self.assertEqual(self.bblistener.tc_queue.reportCompleted.call_count, 0)
 
 
 class TestReflector(unittest.TestCase):
@@ -301,10 +301,10 @@ INSERT INTO buildrequests
         self.reflector.tc_queue.reclaimTask.return_value = {"takenUntil": 1000}
         self.reflector.reflectTasks()
 
-        self.assertEquals(self.reflector.tc_queue.reclaimTask.call_count, 1)
+        self.assertEqual(self.reflector.tc_queue.reclaimTask.call_count, 1)
         bbb_state = self.tasks.select().execute().fetchall()
-        self.assertEquals(len(bbb_state), 1)
-        self.assertEquals(bbb_state[0].takenUntil, 1000)
+        self.assertEqual(len(bbb_state), 1)
+        self.assertEqual(bbb_state[0].takenUntil, 1000)
 
     @patch("arrow.now")
     def testDontReclaimTaskTooSoon(self, fake_now):
@@ -328,10 +328,10 @@ INSERT INTO buildrequests
         fake_now.return_value = arrow.get(500)
         self.reflector.reflectTasks()
 
-        self.assertEquals(self.reflector.tc_queue.reclaimTask.call_count, 0)
+        self.assertEqual(self.reflector.tc_queue.reclaimTask.call_count, 0)
         bbb_state = self.tasks.select().execute().fetchall()
-        self.assertEquals(len(bbb_state), 1)
-        self.assertEquals(bbb_state[0].takenUntil, 1000)
+        self.assertEqual(len(bbb_state), 1)
+        self.assertEqual(bbb_state[0].takenUntil, 1000)
 
     def testPendingTask(self):
         taskid = makeTaskId()
@@ -353,13 +353,13 @@ INSERT INTO buildrequests
 
         # Pending tasks shouldn't have any state changed by the reflector
         bbb_state = self.tasks.select().execute().fetchall()
-        self.assertEquals(len(bbb_state), 1)
-        self.assertEquals(bbb_state[0].buildrequestId, 0)
-        self.assertEquals(bbb_state[0].taskId, taskid)
-        self.assertEquals(bbb_state[0].runId, 0)
-        self.assertEquals(bbb_state[0].createdDate, 20)
-        self.assertEquals(bbb_state[0].processedDate, 25)
-        self.assertEquals(bbb_state[0].takenUntil, None)
+        self.assertEqual(len(bbb_state), 1)
+        self.assertEqual(bbb_state[0].buildrequestId, 0)
+        self.assertEqual(bbb_state[0].taskId, taskid)
+        self.assertEqual(bbb_state[0].runId, 0)
+        self.assertEqual(bbb_state[0].createdDate, 20)
+        self.assertEqual(bbb_state[0].processedDate, 25)
+        self.assertEqual(bbb_state[0].takenUntil, None)
 
     def testCancelledFromBuildbot(self):
         self.buildbot_db.execute(sa.text("""
@@ -380,9 +380,9 @@ INSERT INTO buildrequests
 
         # Tasks that are cancelled from Buildbot should have that reflected
         # in TC, and be removed from our DB.
-        self.assertEquals(self.reflector.tc_queue.cancelTask.call_count, 1)
+        self.assertEqual(self.reflector.tc_queue.cancelTask.call_count, 1)
         bbb_state = self.tasks.select().execute().fetchall()
-        self.assertEquals(len(bbb_state), 0)
+        self.assertEqual(len(bbb_state), 0)
 
 
 class TestTCListener(unittest.TestCase):
@@ -405,6 +405,8 @@ class TestTCListener(unittest.TestCase):
             pulse_exchange_basename="fake",
             worker_type="fake",
             provisioner_id="fake",
+            worker_group="fake",
+            worker_id="fake",
             allowed_builders=(
                 ".*good.*",
             ),
@@ -442,20 +444,20 @@ class TestTCListener(unittest.TestCase):
         }
         self.tclistener.handlePending(data, Mock())
 
-        self.assertEquals(self.tclistener.tc_queue.task.call_count, 1)
+        self.assertEqual(self.tclistener.tc_queue.task.call_count, 1)
         bbb_state = self.tasks.select().execute().fetchall()
-        self.assertEquals(len(bbb_state), 1)
-        self.assertEquals(bbb_state[0].buildrequestId, 1)
-        self.assertEquals(bbb_state[0].taskId, taskid)
-        self.assertEquals(bbb_state[0].runId, 0)
-        self.assertEquals(bbb_state[0].createdDate, 50)
-        self.assertEquals(bbb_state[0].processedDate, processed_date.timestamp)
-        self.assertEquals(bbb_state[0].takenUntil, None)
+        self.assertEqual(len(bbb_state), 1)
+        self.assertEqual(bbb_state[0].buildrequestId, 1)
+        self.assertEqual(bbb_state[0].taskId, taskid)
+        self.assertEqual(bbb_state[0].runId, 0)
+        self.assertEqual(bbb_state[0].createdDate, 50)
+        self.assertEqual(bbb_state[0].processedDate, processed_date.timestamp)
+        self.assertEqual(bbb_state[0].takenUntil, None)
 
         buildrequests = self.tclistener.buildbot_db.buildrequests_table.select().execute().fetchall()
-        self.assertEquals(buildrequests[0].id, 1)
-        self.assertEquals(buildrequests[0].buildername, "builder good name")
-        self.assertEquals(buildrequests[0].priority, 0)
+        self.assertEqual(buildrequests[0].id, 1)
+        self.assertEqual(buildrequests[0].buildername, "builder good name")
+        self.assertEqual(buildrequests[0].priority, 0)
         properties = self.tclistener.buildbot_db.buildset_properties_table.select().execute().fetchall()
         self.assertItemsEqual(properties, [
             (1, u"taskId", u'["{}", "bbb"]'.format(taskid)),
@@ -488,20 +490,20 @@ class TestTCListener(unittest.TestCase):
         }
         self.tclistener.handlePending(data, Mock())
 
-        self.assertEquals(self.tclistener.tc_queue.task.call_count, 1)
+        self.assertEqual(self.tclistener.tc_queue.task.call_count, 1)
         bbb_state = self.tasks.select().execute().fetchall()
-        self.assertEquals(len(bbb_state), 1)
-        self.assertEquals(bbb_state[0].buildrequestId, 1)
-        self.assertEquals(bbb_state[0].taskId, taskid)
-        self.assertEquals(bbb_state[0].runId, 0)
-        self.assertEquals(bbb_state[0].createdDate, 55)
-        self.assertEquals(bbb_state[0].processedDate, processed_date.timestamp)
-        self.assertEquals(bbb_state[0].takenUntil, None)
+        self.assertEqual(len(bbb_state), 1)
+        self.assertEqual(bbb_state[0].buildrequestId, 1)
+        self.assertEqual(bbb_state[0].taskId, taskid)
+        self.assertEqual(bbb_state[0].runId, 0)
+        self.assertEqual(bbb_state[0].createdDate, 55)
+        self.assertEqual(bbb_state[0].processedDate, processed_date.timestamp)
+        self.assertEqual(bbb_state[0].takenUntil, None)
 
         buildrequests = self.tclistener.buildbot_db.buildrequests_table.select().execute().fetchall()
-        self.assertEquals(buildrequests[0].id, 1)
-        self.assertEquals(buildrequests[0].buildername, "i'm a good builder")
-        self.assertEquals(buildrequests[0].priority, 1)
+        self.assertEqual(buildrequests[0].id, 1)
+        self.assertEqual(buildrequests[0].buildername, "i'm a good builder")
+        self.assertEqual(buildrequests[0].priority, 1)
         properties = self.tclistener.buildbot_db.buildset_properties_table.select().execute().fetchall()
         self.assertItemsEqual(properties, [
             (1, u"taskId", u'["{}", "bbb"]'.format(taskid)),
@@ -532,10 +534,14 @@ class TestTCListener(unittest.TestCase):
         }
         self.tclistener.handlePending(data, Mock())
 
-        self.assertEquals(self.tclistener.tc_queue.task.call_count, 1)
-        self.assertEquals(self.tasks.count().execute().fetchone()[0], 0)
-        self.assertEquals(self.tclistener.buildbot_db.buildrequests_table.count().execute().fetchone()[0], 0)
-        self.assertEquals(self.tclistener.tc_queue.cancelTask.call_count, 1)
+        self.assertEqual(self.tclistener.tc_queue.task.call_count, 1)
+        self.assertEqual(self.tasks.count().execute().fetchone()[0], 0)
+        self.assertEqual(self.tclistener.buildbot_db.buildrequests_table.count().execute().fetchone()[0], 0)
+        # bug 1197291: buildbot bridge should claim & report exception instead
+        # of canceling tasks with bad payloads
+        self.assertEqual(self.tclistener.tc_queue.claimTask.call_count, 1)
+        self.assertEqual(self.tclistener.tc_queue.reportException.call_count, 1)
+        self.assertIn({"reason": "malformed-payload"}, self.tclistener.tc_queue.reportException.call_args[0])
 
     def testHandlePendingUpdateRunId(self):
         taskid = makeTaskId()
@@ -570,13 +576,13 @@ class TestTCListener(unittest.TestCase):
 
         self.tclistener.handlePending(data, Mock())
         bbb_state = self.tasks.select().execute().fetchall()
-        self.assertEquals(len(bbb_state), 1)
-        self.assertEquals(bbb_state[0].buildrequestId, 1)
-        self.assertEquals(bbb_state[0].taskId, taskid)
-        self.assertEquals(bbb_state[0].runId, 1)
-        self.assertEquals(bbb_state[0].createdDate, 23)
-        self.assertEquals(bbb_state[0].processedDate, 34)
-        self.assertEquals(bbb_state[0].takenUntil, None)
+        self.assertEqual(len(bbb_state), 1)
+        self.assertEqual(bbb_state[0].buildrequestId, 1)
+        self.assertEqual(bbb_state[0].taskId, taskid)
+        self.assertEqual(bbb_state[0].runId, 1)
+        self.assertEqual(bbb_state[0].createdDate, 23)
+        self.assertEqual(bbb_state[0].processedDate, 34)
+        self.assertEqual(bbb_state[0].takenUntil, None)
 
     def testHandlePendingDisallowedBuilder(self):
         taskid = makeTaskId()
@@ -599,7 +605,9 @@ class TestTCListener(unittest.TestCase):
         }
         self.tclistener.handlePending(data, Mock())
 
-        self.assertEquals(self.tclistener.tc_queue.cancelTask.call_count, 1)
+        self.assertEqual(self.tclistener.tc_queue.claimTask.call_count, 1)
+        self.assertEqual(self.tclistener.tc_queue.reportException.call_count, 1)
+        self.assertIn({"reason": "malformed-payload"}, self.tclistener.tc_queue.reportException.call_args[0])
 
     def testHandleExceptionCancellationBuildStarted(self):
         taskid = makeTaskId()
@@ -642,11 +650,11 @@ INSERT INTO builds
 
         self.tclistener.handleException(data, Mock())
 
-        self.assertEquals(self.tclistener.selfserve.cancelBuild.call_count, 1)
+        self.assertEqual(self.tclistener.selfserve.cancelBuild.call_count, 1)
         # BBB State shouldn't be deleted, because the BuildbotListener
         # still needs to handle adding artifacts.
         bbb_state = self.tasks.select().execute().fetchall()
-        self.assertEquals(len(bbb_state), 1)
+        self.assertEqual(len(bbb_state), 1)
 
     def testHandleExceptionCancellationBuildNotStarted(self):
         taskid = makeTaskId()
@@ -685,11 +693,11 @@ INSERT INTO buildrequests
 
         self.tclistener.handleException(data, Mock())
 
-        self.assertEquals(self.tclistener.selfserve.cancelBuildRequest.call_count, 1)
+        self.assertEqual(self.tclistener.selfserve.cancelBuildRequest.call_count, 1)
         # BBB State shouldn't be deleted, because the BuildbotListener
         # still needs to handle adding artifacts.
         bbb_state = self.tasks.select().execute().fetchall()
-        self.assertEquals(len(bbb_state), 1)
+        self.assertEqual(len(bbb_state), 1)
 
     def testHandleExceptionOtherReason(self):
         self.tasks.insert().execute(
@@ -715,7 +723,7 @@ INSERT INTO buildrequests
 
         # This event should be ignored by the handler, so we need to verify
         # that none of our state has changed.
-        self.assertEquals(self.tclistener.selfserve.cancelBuild.call_count, 0)
-        self.assertEquals(self.tclistener.selfserve.cancelBuildRequest.call_count, 0)
+        self.assertEqual(self.tclistener.selfserve.cancelBuild.call_count, 0)
+        self.assertEqual(self.tclistener.selfserve.cancelBuildRequest.call_count, 0)
         bbb_state = self.tasks.select().execute().fetchall()
-        self.assertEquals(len(bbb_state), 1)
+        self.assertEqual(len(bbb_state), 1)
