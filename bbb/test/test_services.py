@@ -3,6 +3,7 @@ import unittest
 
 import arrow
 import sqlalchemy as sa
+from taskcluster.exceptions import TaskclusterRestFailure
 
 from .dbutils import makeSchedulerDb
 from ..services import BuildbotListener, Reflector, TCListener, SUCCESS, \
@@ -272,11 +273,13 @@ class TestReflector(unittest.TestCase):
                 }
             },
             interval=5,
+            selfserve_url="fake",
         )
         # Replace the TaskCluster Queue object with a Mock because we never
         # want to actually talk to TC, just check if the calls that would've
         # been made are correct
         self.reflector.tc_queue = Mock()
+        self.reflector.selfserve = Mock()
         self.tasks = self.reflector.bbb_db.tasks_table
         self.buildbot_db = self.reflector.buildbot_db.db
 
@@ -332,6 +335,45 @@ INSERT INTO buildrequests
         bbb_state = self.tasks.select().execute().fetchall()
         self.assertEqual(len(bbb_state), 1)
         self.assertEqual(bbb_state[0].takenUntil, 1000)
+
+    @patch("arrow.now")
+    def testReclaimExpiredTask(self, fake_now):
+        taskid = makeTaskId()
+        self.buildbot_db.execute(sa.text("""
+INSERT INTO sourcestamps
+    (id, branch) VALUES (0, "foo");
+"""))
+        self.buildbot_db.execute(sa.text("""
+INSERT INTO buildsets
+    (id, sourcestampid, submitted_at) VALUES (0, 0, 2);
+"""))
+        self.buildbot_db.execute(sa.text("""
+INSERT INTO buildrequests
+    (id, buildsetid, buildername, submitted_at)
+    VALUES (2, 0, "foo", 15);
+"""))
+        self.buildbot_db.execute(sa.text("""
+INSERT INTO builds
+    (id, number, brid, start_time)
+    VALUES (2, 0, 2, 30);
+"""))
+        self.tasks.insert().execute(
+            buildrequestId=2,
+            taskId=taskid,
+            runId=0,
+            createdDate=12,
+            processedDate=17,
+            takenUntil=200,
+        )
+
+        fake_now.return_value = arrow.get(150)
+        super_exc = Mock()
+        super_exc.response.status_code = 409
+        self.reflector.tc_queue.reclaimTask.side_effect = TaskclusterRestFailure("fail", super_exc, 409)
+        self.reflector.reflectTasks()
+
+        self.assertEqual(self.reflector.tc_queue.reclaimTask.call_count, 1)
+        self.assertEqual(self.reflector.selfserve.cancelBuild.call_count, 1)
 
     def testPendingTask(self):
         taskid = makeTaskId()

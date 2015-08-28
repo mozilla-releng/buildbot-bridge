@@ -260,9 +260,10 @@ class Reflector(ServiceBase):
      this, but we may want to reclaim in case the BBListener takes a long
      time to process the completed Build.
     """
-    def __init__(self, interval, *args, **kwargs):
+    def __init__(self, interval, selfserve_url, *args, **kwargs):
         super(Reflector, self).__init__(*args, **kwargs)
         self.interval = interval
+        self.selfserve = SelfserveClient(selfserve_url)
 
     def start(self):
         log.info("Starting reflector")
@@ -336,9 +337,10 @@ class Reflector(ServiceBase):
                     except TaskclusterRestFailure, e:
                         if e.superExc.response.status_code == 409:
                             # Conflict; it's expired
-                            log.exception("couldn't reclaim task %s: HTTP 409; deleting", t.taskId)
-                            # TODO: probably should cancel the job in buildbot?
-                            self.bbb_db.deleteBuildRequest(t.buildrequestId)
+                            log.info("Deadline exceeded for Task %s, cancelling it", t.taskId)
+                            branch = self.buildbot_db.getBranch(t.buildrequestId).split("/")[-1]
+                            for id_ in self.buildbot_db.getBuildIds(t.buildrequestId):
+                                self.selfserve.cancelBuild(branch, id_)
                         else:
                             log.error("Couldn't reclaim task: %s", e.superExc)
 
