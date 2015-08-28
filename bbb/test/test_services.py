@@ -694,10 +694,100 @@ INSERT INTO buildrequests
         self.tclistener.handleException(data, Mock())
 
         self.assertEqual(self.tclistener.selfserve.cancelBuildRequest.call_count, 1)
+        # bbb state should go away - there will be no buildFinished event
+        # (because the Build never started!)
+        bbb_state = self.tasks.select().execute().fetchall()
+        self.assertEqual(len(bbb_state), 0)
+
+    def testHandleExceptionDeadlineExceededBuildStarted(self):
+        taskid = makeTaskId()
+        self.buildbot_db.execute(sa.text("""
+INSERT INTO sourcestamps
+    (id, branch) VALUES (0, "bar");
+"""))
+        self.buildbot_db.execute(sa.text("""
+INSERT INTO buildsets
+    (id, sourcestampid, submitted_at) VALUES (0, 0, 2);
+"""))
+        self.buildbot_db.execute(sa.text("""
+INSERT INTO buildrequests
+    (id, buildsetid, buildername, submitted_at)
+    VALUES (0, 0, "good", 5);
+"""))
+        self.buildbot_db.execute(sa.text("""
+INSERT INTO builds
+    (id, number, brid, start_time)
+    VALUES (0, 0, 0, 40);"""))
+        self.tasks.insert().execute(
+            buildrequestId=0,
+            taskId=taskid,
+            runId=0,
+            createdDate=3,
+            processedDate=7,
+            takenUntil=80,
+        )
+
+        data = {"status": {
+            "taskId": taskid,
+            "runs": [
+                {
+                    "runId": 0,
+                    "state": "exception",
+                    "reasonResolved": "canceled",
+                },
+            ],
+        }}
+
+        self.tclistener.handleException(data, Mock())
+
+        self.assertEqual(self.tclistener.selfserve.cancelBuild.call_count, 1)
         # BBB State shouldn't be deleted, because the BuildbotListener
         # still needs to handle adding artifacts.
+        # TODO: Will the BBListener be able to add artifacts since the Task is
+        # already resolved?
         bbb_state = self.tasks.select().execute().fetchall()
         self.assertEqual(len(bbb_state), 1)
+
+    def testHandleExceptionDeadlineExceeded(self):
+        taskid = makeTaskId()
+        self.buildbot_db.execute(sa.text("""
+INSERT INTO sourcestamps
+    (id, branch) VALUES (0, "bar");
+"""))
+        self.buildbot_db.execute(sa.text("""
+INSERT INTO buildsets
+    (id, sourcestampid, submitted_at) VALUES (0, 0, 2);
+"""))
+        self.buildbot_db.execute(sa.text("""
+INSERT INTO buildrequests
+    (id, buildsetid, buildername, submitted_at)
+    VALUES (0, 0, "good", 5);
+"""))
+        self.tasks.insert().execute(
+            buildrequestId=0,
+            taskId=taskid,
+            runId=0,
+            createdDate=3,
+            processedDate=7,
+            takenUntil=80,
+        )
+
+        data = {"status": {
+            "taskId": taskid,
+            "runs": [
+                {
+                    "runId": 0,
+                    "state": "exception",
+                    "reasonResolved": "deadline-exceeded",
+                },
+            ],
+        }}
+
+        self.tclistener.handleException(data, Mock())
+
+        self.assertEqual(self.tclistener.selfserve.cancelBuildRequest.call_count, 1)
+        bbb_state = self.tasks.select().execute().fetchall()
+        self.assertEqual(len(bbb_state), 0)
 
     def testHandleExceptionOtherReason(self):
         self.tasks.insert().execute(
