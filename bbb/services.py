@@ -20,18 +20,6 @@ log = logging.getLogger(__name__)
 SUCCESS, WARNINGS, FAILURE, SKIPPED, EXCEPTION, RETRY, CANCELLED = range(7)
 
 
-def allow_builder(buildername, allowed_builders):
-    """Checks "buildername" against list of "allowed_builders" patterns. If
-    "buildername" matches any of them, it is considered to be allowed and this
-    function returns True. Otherwise, returns False."""
-    for allowed in allowed_builders:
-        if re.match(allowed, buildername):
-            log.debug("Builder %s matches an allowed pattern", buildername)
-            return True
-    log.debug("Builder %s does not match any pattern, ignoring it", buildername)
-    return False
-
-
 class BuildbotListener(ListenerService):
     """Listens for messages from Buildbot and responds appropriately.
     Currently handles the following types of events:
@@ -39,10 +27,9 @@ class BuildbotListener(ListenerService):
      * Build finished (build.$builder.$buildnum.log_uploaded)
     """
     def __init__(self, tc_worker_group, tc_worker_id, pulse_queue_basename, pulse_exchange,
-                 allowed_builders=(), *args, **kwargs):
+                 *args, **kwargs):
         self.tc_worker_group = tc_worker_group
         self.tc_worker_id = tc_worker_id
-        self.allowed_builders = allowed_builders
         events = (
             ListenerServiceEvent(
                 queue_name="%s/started" % pulse_queue_basename,
@@ -71,10 +58,6 @@ class BuildbotListener(ListenerService):
         buildername = data["payload"]["build"]["builderName"]
         master = data["_meta"]["master_name"]
         incarnation = data["_meta"]["master_incarnation"]
-
-        if not allow_builder(buildername, self.allowed_builders):
-            msg.ack()
-            return
 
         for brid in self.buildbot_db.getBuildRequests(buildnumber, buildername, master, incarnation):
             brid = brid[0]
@@ -136,12 +119,6 @@ class BuildbotListener(ListenerService):
             results = data["payload"]["build"]["results"]
         except KeyError:
             log.error("Couldn't find job results from %s, can't proceed", data["payload"]["build"]["results"])
-            msg.ack()
-            return
-
-        buildername = data["payload"]["build"]["builderName"]
-
-        if not allow_builder(buildername, self.allowed_builders):
             msg.ack()
             return
 
@@ -355,8 +332,8 @@ class TCListener(ListenerService):
 
     def __init__(self, pulse_queue_basename, pulse_exchange_basename, worker_type,
                  provisioner_id, worker_group, worker_id, selfserve_url,
-                 allowed_builders=(), *args, **kwargs):
-        self.allowed_builders = allowed_builders
+                 restricted_builders=(), *args, **kwargs):
+        self.restricted_builders = restricted_builders
         self.worker_group = worker_group
         self.worker_id = worker_id
         self.selfserve = SelfserveClient(selfserve_url)
@@ -379,6 +356,31 @@ class TCListener(ListenerService):
         )
         super(TCListener, self).__init__(*args, events=events, **kwargs)
 
+    def _isAuthorized(self, buildername, scopes):
+        """Tests to see if the builder given is restricted, and if so, whether
+        or not the scopes given are authorized to use it. Builders that do
+        not match the overall restricted builder patterns do not require any
+        scopes. Builders that do must have a buildbot-bridge:builder-name:
+        scope that matches the builder name given."""
+        for r in self.restricted_builders:
+            if re.match(r, buildername):
+                break
+        # If not restricted
+        else:
+            return True
+
+        # If it's a restricted builder, we need to check scopes!
+        for s in scopes:
+            if not s.startswith("buildbot-bridge:builder-name:"):
+                continue
+            allowed_builder = s.split(":")[-1]
+            if buildername == allowed_builder or allowed_builder == "*":
+                return True
+            elif allowed_builder.endswith("*") and buildername.startswith(allowed_builder[:-1]):
+                return True
+
+        return False
+
     def handlePending(self, data, msg):
         """When a Task becomes pending in Taskcluster it may be because the
         Task was just created, or a new Run for an existing Task was created.
@@ -396,7 +398,8 @@ class TCListener(ListenerService):
         our_task = self.bbb_db.getTask(taskid)
 
         buildername = tc_task["payload"].get("buildername")
-        if not self.payload_schema.is_valid(tc_task["payload"]) or not allow_builder(buildername, self.allowed_builders):
+        scopes = tc_task.get("scopes", [])
+        if not self.payload_schema.is_valid(tc_task["payload"]) or not self._isAuthorized(buildername, scopes):
             log.info("Payload is invalid for task %s, refusing to create BuildRequest", taskid)
             for e in self.payload_schema.iter_errors(tc_task["payload"]):
                 log.debug(e.message)
