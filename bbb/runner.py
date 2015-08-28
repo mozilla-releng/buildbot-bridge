@@ -43,8 +43,8 @@ def main():
             pulse_password=config["pulse_password"],
             pulse_queue_basename=config["pulse_queue_basename"],
             pulse_exchange=config["bblistener"]["pulse_exchange"],
-            tc_worker_group=config["bblistener"]["tc_worker_group"],
-            tc_worker_id=config["bblistener"]["tc_worker_id"],
+            tc_worker_group=config["tc_worker_group"],
+            tc_worker_id=config["tc_worker_id"],
             allowed_builders=config["allowed_builders"],
             **kwargs
         )
@@ -63,6 +63,8 @@ def main():
             selfserve_url=config["tclistener"]["selfserve_url"],
             worker_type=config["tclistener"]["worker_type"],
             provisioner_id=config["tclistener"]["provisioner_id"],
+            worker_group=config["tc_worker_group"],
+            worker_id=config["tc_worker_id"],
             allowed_builders=config["allowed_builders"],
             **kwargs
         )

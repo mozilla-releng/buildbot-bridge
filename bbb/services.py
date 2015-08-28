@@ -81,8 +81,7 @@ class BuildbotListener(ListenerService):
             try:
                 task = self.bbb_db.getTaskFromBuildRequest(brid)
             except TaskNotFound:
-                # TODO: will this still be weird after we have a reverse bridge?
-                log.warning("WEIRD: Task not found for brid %s (%s), nothing to do.", brid, buildername)
+                log.debug("Task not found for brid %s (%s), nothing to do.", brid, buildername)
                 continue
             log.info("Claiming %s", task.taskId)
             # Taskcluster requires runId to be an int, but it comes to us as a long.
@@ -355,8 +354,11 @@ class TCListener(ListenerService):
     that needs to be watched."""
 
     def __init__(self, pulse_queue_basename, pulse_exchange_basename, worker_type,
-                 provisioner_id, selfserve_url, allowed_builders=(), *args, **kwargs):
+                 provisioner_id, worker_group, worker_id, selfserve_url,
+                 allowed_builders=(), *args, **kwargs):
         self.allowed_builders = allowed_builders
+        self.worker_group = worker_group
+        self.worker_id = worker_id
         self.selfserve = SelfserveClient(selfserve_url)
         self.payload_schema = Draft4Validator(
             yaml.load(open(path.join(path.dirname(schemas.__file__), "payload.yml")))
@@ -399,11 +401,14 @@ class TCListener(ListenerService):
             for e in self.payload_schema.iter_errors(tc_task["payload"]):
                 log.debug(e.message)
 
-            # malformed-payload is the most accurate TC status for this situation
-            # but we can't use reportException for cancelling pending tasks,
-            # so this will show up as "cancelled" on TC.
-            self.tc_queue.cancelTask(taskid)
+            # In order to report a malformed-payload on the TAsk, we need to
+            # claim it first.
+            self.tc_queue.claimTask(taskid, int(runid), {
+                "workerGroup": self.worker_group,
+                "workerId": self.worker_id,
+            })
             msg.ack()
+            self.tc_queue.reportException(taskid, runid, {"reason": "malformed-payload"})
             # If this Task is already in our database, we should delete it
             # because the Task has been cancelled.
             if our_task:
