@@ -401,15 +401,14 @@ class TCListener(ListenerService):
             for e in self.payload_schema.iter_errors(tc_task["payload"]):
                 log.debug(e.message)
 
-            # malformed-payload is the most accurate TC status for this situation
-            # but we can't use reportException for cancelling pending tasks,
-            # so this will show up as "cancelled" on TC.
+            # In order to report a malformed-payload on the TAsk, we need to
+            # claim it first.
             self.tc_queue.claimTask(taskid, int(runid), {
                 "workerGroup": self.worker_group,
                 "workerId": self.worker_id,
             })
-            self.tc_queue.reportException(taskid, runid, {"reason": "malformed-payload"})
             msg.ack()
+            self.tc_queue.reportException(taskid, runid, {"reason": "malformed-payload"})
             # If this Task is already in our database, we should delete it
             # because the Task has been cancelled.
             if our_task:
