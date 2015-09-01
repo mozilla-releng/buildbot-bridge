@@ -7,6 +7,7 @@
     },
     "buildbot_scheduler_db": "mysql://foo:bar@blah/crap",
     "bbb_db": "sqlite:///bbb.db",
+    "selfserve_url": "http://buildapi.pvt.build.mozilla.org/buildapi/self-serve",
 
     "pulse_user": "foo",
     "pulse_password": "foo",
@@ -23,7 +24,6 @@
         "pulse_exchange_basename": "exchange/taskcluster-queue/v1",
         "worker_type": "buildbot-bridge",
         "provisioner_id": "buildbot-bridge",
-        "selfserve_url": "http://buildapi.pvt.build.mozilla.org/buildapi/self-serve",
         "logfile": "tclistener.log"
     },
     "bblistener": {

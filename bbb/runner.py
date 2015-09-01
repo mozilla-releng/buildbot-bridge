@@ -51,6 +51,7 @@ def main():
     elif args.service[0] == "reflector":
         service = Reflector(
             interval=config["reflector"]["interval"],
+            selfserve_url=config["selfserve_url"],
             **kwargs
         )
     elif args.service[0] == "tclistener":
@@ -60,7 +61,7 @@ def main():
             pulse_password=config["pulse_password"],
             pulse_queue_basename=config["pulse_queue_basename"],
             pulse_exchange_basename=config["tclistener"]["pulse_exchange_basename"],
-            selfserve_url=config["tclistener"]["selfserve_url"],
+            selfserve_url=config["selfserve_url"],
             worker_type=config["tclistener"]["worker_type"],
             provisioner_id=config["tclistener"]["provisioner_id"],
             worker_group=config["tc_worker_group"],
