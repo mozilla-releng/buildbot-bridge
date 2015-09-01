@@ -371,17 +371,14 @@ class TCListener(ListenerService):
         else:
             return True
 
-        # If it's a restricted builder, we need to check scopes!
-        for s in scopes:
-            if not s.startswith("buildbot-bridge:builder-name:"):
-                continue
-            allowed_builder = s.split(":")[-1]
-            if buildername == allowed_builder or allowed_builder == "*":
+        requiredscope = "buildbot-bridge:builder-name:" + buildername
+        for scope in scopes:
+            if scope == requiredscope:
                 return True
-            elif allowed_builder.endswith("*") and buildername.startswith(allowed_builder[:-1]):
+            if scope.endswith("*") and requiredscope.startswith(scope[:-1]):
                 return True
-
         return False
+
 
     def handlePending(self, data, msg):
         """When a Task becomes pending in Taskcluster it may be because the
