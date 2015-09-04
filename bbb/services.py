@@ -397,11 +397,16 @@ class TCListener(ListenerService):
         our_task = self.bbb_db.getTask(taskid)
 
         buildername = tc_task["payload"].get("buildername")
+        # If the builder name matches an ignored pattern, we shouldn't do
+        # anything. See https://bugzilla.mozilla.org/show_bug.cgi?id=1201861
+        # for additional background.
         if matches_pattern(buildername, self.ignored_builders):
             log.debug("Buildername %s matches an ignore pattern, doing nothing", buildername)
             msg.ack()
             return
 
+        # However, if the builder name doesn't match an allowed pattern, or
+        # the payload is invalid, the Task should be canceled.
         if not self.payload_schema.is_valid(tc_task["payload"]) or not matches_pattern(buildername, self.allowed_builders):
             log.info("Payload is invalid for task %s, refusing to create BuildRequest", taskid)
             for e in self.payload_schema.iter_errors(tc_task["payload"]):
