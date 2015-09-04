@@ -67,6 +67,7 @@ def main():
             worker_group=config["tc_worker_group"],
             worker_id=config["tc_worker_id"],
             allowed_builders=config["allowed_builders"],
+            ignored_builders=config["ignored_builders"],
             **kwargs
         )
     else:
