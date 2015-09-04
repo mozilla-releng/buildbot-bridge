@@ -19,6 +19,9 @@
     "allowed_builders": [
         ".*alder.*"
     ],
+    "ignored_builders": [
+        "^((?!alder).)*$"
+    ],
 
     "tclistener": {
         "pulse_exchange_basename": "exchange/taskcluster-queue/v1",
