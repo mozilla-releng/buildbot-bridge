@@ -330,7 +330,10 @@ class ListenerService(ServiceBase):
         consumers = []
         for event in self.events:
             log.debug("Setting up queue on exchange: %s with routing_key: %s", event.exchange, event.routing_key)
-            e = Exchange(name=event.exchange, type="topic")
+            # Passive exchanges must be used, otherwise kombu will try to
+            # create the exchange (which we don't want, we're consuming
+            # an existing one!)
+            e = Exchange(name=event.exchange, type="topic", passive=True)
             q = Queue(
                 name=event.queue_name,
                 exchange=e,
