@@ -20,15 +20,11 @@ log = logging.getLogger(__name__)
 SUCCESS, WARNINGS, FAILURE, SKIPPED, EXCEPTION, RETRY, CANCELLED = range(7)
 
 
-def allow_builder(buildername, allowed_builders):
-    """Checks "buildername" against list of "allowed_builders" patterns. If
-    "buildername" matches any of them, it is considered to be allowed and this
-    function returns True. Otherwise, returns False."""
-    for allowed in allowed_builders:
-        if re.match(allowed, buildername):
-            log.debug("Builder %s matches an allowed pattern", buildername)
+def matches_pattern(s, patterns):
+    """Returns True if "s" matches any of the given patterns. False otherwise."""
+    for pat in patterns:
+        if re.match(pat, s):
             return True
-    log.debug("Builder %s does not match any pattern, ignoring it", buildername)
     return False
 
 
@@ -72,7 +68,8 @@ class BuildbotListener(ListenerService):
         master = data["_meta"]["master_name"]
         incarnation = data["_meta"]["master_incarnation"]
 
-        if not allow_builder(buildername, self.allowed_builders):
+        if not matches_pattern(buildername, self.allowed_builders):
+            log.debug("Builder %s doesn't match an allowed pattern, ignoring it", buildername)
             msg.ack()
             return
 
@@ -141,7 +138,8 @@ class BuildbotListener(ListenerService):
 
         buildername = data["payload"]["build"]["builderName"]
 
-        if not allow_builder(buildername, self.allowed_builders):
+        if not matches_pattern(buildername, self.allowed_builders):
+            log.debug("Builder %s doesn't match an allowed pattern, ignoring it", buildername)
             msg.ack()
             return
 
@@ -357,8 +355,9 @@ class TCListener(ListenerService):
 
     def __init__(self, pulse_queue_basename, pulse_exchange_basename, worker_type,
                  provisioner_id, worker_group, worker_id, selfserve_url,
-                 allowed_builders=(), *args, **kwargs):
+                 allowed_builders=(), ignored_builders=(), *args, **kwargs):
         self.allowed_builders = allowed_builders
+        self.ignored_builders = ignored_builders
         self.worker_group = worker_group
         self.worker_id = worker_id
         self.selfserve = SelfserveClient(selfserve_url)
@@ -398,7 +397,17 @@ class TCListener(ListenerService):
         our_task = self.bbb_db.getTask(taskid)
 
         buildername = tc_task["payload"].get("buildername")
-        if not self.payload_schema.is_valid(tc_task["payload"]) or not allow_builder(buildername, self.allowed_builders):
+        # If the builder name matches an ignored pattern, we shouldn't do
+        # anything. See https://bugzilla.mozilla.org/show_bug.cgi?id=1201861
+        # for additional background.
+        if matches_pattern(buildername, self.ignored_builders):
+            log.debug("Buildername %s matches an ignore pattern, doing nothing", buildername)
+            msg.ack()
+            return
+
+        # However, if the builder name doesn't match an allowed pattern, or
+        # the payload is invalid, the Task should be canceled.
+        if not self.payload_schema.is_valid(tc_task["payload"]) or not matches_pattern(buildername, self.allowed_builders):
             log.info("Payload is invalid for task %s, refusing to create BuildRequest", taskid)
             for e in self.payload_schema.iter_errors(tc_task["payload"]):
                 log.debug(e.message)

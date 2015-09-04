@@ -124,7 +124,7 @@ INSERT INTO builds
         self.assertEqual(bbb_state[0].takenUntil, 80)
         self.assertEqual(bbb_state[1].takenUntil, 80)
 
-    def testHandleStartedIgnoredBuilder(self):
+    def testHandleStartedDisallowedBuilder(self):
         self.buildbot_db.execute(sa.text("""
 INSERT INTO buildrequests
     (id, buildsetid, buildername, submitted_at, claimed_by_name, claimed_by_incarnation)
@@ -452,6 +452,9 @@ class TestTCListener(unittest.TestCase):
             allowed_builders=(
                 ".*good.*",
             ),
+            ignored_builders=(
+                ".*ignored.*",
+            ),
         )
         # Replace the TaskCluster Queue object with a Mock because we never
         # want to actually talk to TC, just check if the calls that would've
@@ -650,6 +653,32 @@ class TestTCListener(unittest.TestCase):
         self.assertEqual(self.tclistener.tc_queue.claimTask.call_count, 1)
         self.assertEqual(self.tclistener.tc_queue.reportException.call_count, 1)
         self.assertIn({"reason": "malformed-payload"}, self.tclistener.tc_queue.reportException.call_args[0])
+
+    def testHandlePendingIgnoredBuilder(self):
+        taskid = makeTaskId()
+        data = {"status": {
+            "taskId": taskid,
+            "runs": [
+                {"runId": 0},
+            ],
+        }}
+
+        self.tclistener.tc_queue.task.return_value = {
+            "created": 20,
+            "payload": {
+                "buildername": "builder ignored name",
+                "sourcestamp": {
+                    "branch": "https://hg.mozilla.org/integration/mozilla-inbound/",
+                    "revision": "abcdef123456",
+                },
+            },
+        }
+        self.tclistener.handlePending(data, Mock())
+
+        self.assertEqual(self.tclistener.tc_queue.claimTask.call_count, 0)
+        self.assertEqual(self.tclistener.tc_queue.reportException.call_count, 0)
+        bbb_state = self.tasks.select().execute().fetchall()
+        self.assertEqual(len(bbb_state), 0)
 
     def testHandleExceptionCancellationBuildStarted(self):
         taskid = makeTaskId()
