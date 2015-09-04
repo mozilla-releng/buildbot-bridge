@@ -220,11 +220,26 @@ class BuildbotListener(ListenerService):
                 #    states are already in sync, so we don't technically need
                 #    call cancelTask, but it doesn't hurt to (it just returns
                 #    the current Task status).
+                # 3) The Task exceeds its deadline, and Taskcluster resolves
+                #    it with a deadline-exceeded exception. In this case, the
+                #    TCListener receives that event and cancels the running
+                #    Build. That events gets picked up us and now we're here.
+                #    This is very similar to the cancellation case, except
+                #    that we can't call cancelTask, because Taskcluster will
+                #    complain about it already being resolved as exception.
+                #    In this case, there's nothing to do except delete the
+                #    BuildRequest from our database.
                 #
                 # In both cases we need to delete the BuildRequest from our own
                 # database.
                 log.info("Marking task %s as cancelled", taskid)
-                self.tc_queue.cancelTask(taskid)
+                status = self.tc_queue.status(taskid)["status"]
+                for r in status["runs"]:
+                    if r["runId"] == runid and r["reasonResolved"] == "deadline-exceeded":
+                        break
+                else:
+                    self.tc_queue.cancelTask(taskid)
+
                 if not msg.acknowledged:
                     msg.ack()
                 self.bbb_db.deleteBuildRequest(brid)
