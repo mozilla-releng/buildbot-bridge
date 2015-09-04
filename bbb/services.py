@@ -397,6 +397,11 @@ class TCListener(ListenerService):
         our_task = self.bbb_db.getTask(taskid)
 
         buildername = tc_task["payload"].get("buildername")
+        if matches_pattern(buildername, self.ignored_builders):
+            log.debug("Buildername %s matches an ignore pattern, doing nothing", buildername)
+            msg.ack()
+            return
+
         if not self.payload_schema.is_valid(tc_task["payload"]) or not matches_pattern(buildername, self.allowed_builders):
             log.info("Payload is invalid for task %s, refusing to create BuildRequest", taskid)
             for e in self.payload_schema.iter_errors(tc_task["payload"]):

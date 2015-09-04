@@ -453,7 +453,7 @@ class TestTCListener(unittest.TestCase):
                 ".*good.*",
             ),
             ignored_builders=(
-                ".*whatever.*",
+                ".*ignored.*",
             ),
         )
         # Replace the TaskCluster Queue object with a Mock because we never
@@ -677,6 +677,7 @@ class TestTCListener(unittest.TestCase):
 
         self.assertEqual(self.tclistener.tc_queue.claimTask.call_count, 0)
         self.assertEqual(self.tclistener.tc_queue.reportException.call_count, 0)
+        bbb_state = self.tasks.select().execute().fetchall()
         self.assertEqual(len(bbb_state), 0)
 
     def testHandleExceptionCancellationBuildStarted(self):
