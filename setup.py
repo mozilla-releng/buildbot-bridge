@@ -28,6 +28,7 @@ setup(
         "mysql-python",
         "jsonschema",
         "PyYAML",
+        "slugid",
     ],
     tests_require=[
         "mock",
