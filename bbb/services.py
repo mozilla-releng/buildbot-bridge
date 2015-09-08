@@ -234,10 +234,7 @@ class BuildbotListener(ListenerService):
                 # database.
                 log.info("Marking task %s as cancelled", taskid)
                 status = self.tc_queue.status(taskid)["status"]
-                for r in status["runs"]:
-                    if r["runId"] == runid and r["reasonResolved"] == "deadline-exceeded":
-                        break
-                else:
+                if not status["runs"][runid].get("reasonResolved") == "deadline-exceeded":
                     self.tc_queue.cancelTask(taskid)
 
                 if not msg.acknowledged:
