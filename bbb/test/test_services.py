@@ -155,15 +155,11 @@ INSERT INTO builds
     # Passing new=Mock prevents patch from passing the patched object,
     # which we have no need of, to this method.
     @patch("requests.put", new=Mock)
-    def _handleFinishedTest(self, results, brid=1):
+    def _handleFinishedTest(self, results):
         self.buildbot_db.execute(sa.text("""
 INSERT INTO buildrequests
     (id, buildsetid, buildername, submitted_at, complete, complete_at, results)
     VALUES (1, 0, "good", 5, 1, 30, 0);"""))
-        self.buildbot_db.execute(sa.text("""
-INSERT INTO buildrequests
-    (id, buildsetid, buildername, submitted_at, complete, complete_at, results)
-    VALUES (2, 1, "good", 10, 0, NULL, NULL);"""))
         self.buildbot_db.execute(sa.text("""
 INSERT INTO builds
     (id, number, brid, start_time, finish_time)
@@ -176,19 +172,11 @@ INSERT INTO builds
             processedDate=10,
             takenUntil=100,
         )
-        self.tasks.insert().execute(
-            buildrequestId=2,
-            taskId=makeTaskId(),
-            runId=0,
-            createdDate=7,
-            processedDate=12,
-            takenUntil=200,
-        )
 
         data = {"payload": {"build": {
             "builderName": "good",
             "properties": (
-                ("request_ids", (brid,), "postrun.py"),
+                ("request_ids", (1,), "postrun.py"),
             ),
             "results": results,
         }}}
@@ -238,11 +226,11 @@ INSERT INTO builds
         # Unlike other status, the BuildRequest is NOT finished if a RETRY is hit
         self.assertEqual(self.tasks.count().where(self.tasks.c.buildrequestId == 1).execute().fetchone()[0], 1)
 
-    def testHandleFinishedCancelledBuildStarted(self):
+    def testHandleFinishedCancelledInBuildbot(self):
         self.bblistener.tc_queue.status.return_value = {
             "status": {
                 "runs": [{
-                    "reasonResolved": "cancelled",
+                    "state": "running",
                     "runId": 0,
                 }],
             },
@@ -254,7 +242,23 @@ INSERT INTO builds
         # Build and Task are done - should be deleted from our db.
         self.assertEqual(self.tasks.count().where(self.tasks.c.buildrequestId == 1).execute().fetchone()[0], 0)
 
-    def testHandleFinishedCancelledBuildNotStarted(self):
+    def testHandleFinishedCancelledInTCBuildStarted(self):
+        self.bblistener.tc_queue.status.return_value = {
+            "status": {
+                "runs": [{
+                    "reasonResolved": "cancelled",
+                    "runId": 0,
+                }],
+            },
+        }
+        self._handleFinishedTest(CANCELLED)
+
+        self.assertEqual(self.bblistener.tc_queue.createArtifact.call_count, 1)
+        self.assertEqual(self.bblistener.tc_queue.cancelTask.call_count, 0)
+        # Build and Task are done - should be deleted from our db.
+        self.assertEqual(self.tasks.count().where(self.tasks.c.buildrequestId == 1).execute().fetchone()[0], 0)
+
+    def testHandleFinishedCancelledInTCDeadlineExceeded(self):
         self.bblistener.tc_queue.status.return_value = {
             "status": {
                 "runs": [{
@@ -263,12 +267,12 @@ INSERT INTO builds
                 }],
             },
         }
-        self._handleFinishedTest(CANCELLED, brid=2)
+        self._handleFinishedTest(CANCELLED)
 
         self.assertEqual(self.bblistener.tc_queue.createArtifact.call_count, 1)
         self.assertEqual(self.bblistener.tc_queue.cancelTask.call_count, 0)
         # Build and Task are done - should be deleted from our db.
-        self.assertEqual(self.tasks.count().where(self.tasks.c.buildrequestId == 2).execute().fetchone()[0], 0)
+        self.assertEqual(self.tasks.count().where(self.tasks.c.buildrequestId == 1).execute().fetchone()[0], 0)
 
     def testHandleFinishedIgnoredBuilder(self):
         self.buildbot_db.execute(sa.text("""
