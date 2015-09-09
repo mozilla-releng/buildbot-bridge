@@ -1,6 +1,5 @@
-from base64 import b64encode
 import json
-from uuid import uuid4
+import slugid
 
 from redo import retrier
 import requests
@@ -43,4 +42,4 @@ def createJsonArtifact(queue, taskid, runid, name, data, expires):
 
 def makeTaskId():
     """Used in testing to generate task ids without talking to TaskCluster."""
-    return b64encode(uuid4().bytes).replace("+", "-").replace("/", "-").rstrip("=")
+    return slugid.nice()

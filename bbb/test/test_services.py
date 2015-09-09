@@ -121,7 +121,7 @@ INSERT INTO builds
         self.assertEqual(bbb_state[0].takenUntil, 80)
         self.assertEqual(bbb_state[1].takenUntil, 80)
 
-    def testHandleStartedIgnoredBuilder(self):
+    def testHandleStartedDisallowedBuilder(self):
         self.buildbot_db.execute(sa.text("""
 INSERT INTO buildrequests
     (id, buildsetid, buildername, submitted_at, claimed_by_name, claimed_by_incarnation)
@@ -189,7 +189,7 @@ INSERT INTO builds
         self.assertEqual(self.bblistener.tc_queue.createArtifact.call_count, 1)
         self.assertEqual(self.bblistener.tc_queue.reportCompleted.call_count, 1)
         # Build and Task are done - should be deleted from our db.
-        self.assertEqual(self.tasks.count().execute().fetchone()[0], 0)
+        self.assertEqual(self.tasks.count().where(self.tasks.c.buildrequestId == 1).execute().fetchone()[0], 0)
 
     def testHandleFinishedWarnings(self):
         self._handleFinishedTest(WARNINGS)
@@ -197,7 +197,7 @@ INSERT INTO builds
         self.assertEqual(self.bblistener.tc_queue.createArtifact.call_count, 1)
         self.assertEqual(self.bblistener.tc_queue.reportFailed.call_count, 1)
         # Build and Task are done - should be deleted from our db.
-        self.assertEqual(self.tasks.count().execute().fetchone()[0], 0)
+        self.assertEqual(self.tasks.count().where(self.tasks.c.buildrequestId == 1).execute().fetchone()[0], 0)
 
     def testHandleFinishedFailed(self):
         self._handleFinishedTest(FAILURE)
@@ -205,7 +205,7 @@ INSERT INTO builds
         self.assertEqual(self.bblistener.tc_queue.createArtifact.call_count, 1)
         self.assertEqual(self.bblistener.tc_queue.reportFailed.call_count, 1)
         # Build and Task are done - should be deleted from our db.
-        self.assertEqual(self.tasks.count().execute().fetchone()[0], 0)
+        self.assertEqual(self.tasks.count().where(self.tasks.c.buildrequestId == 1).execute().fetchone()[0], 0)
 
     def testHandleFinishedException(self):
         self._handleFinishedTest(EXCEPTION)
@@ -213,7 +213,7 @@ INSERT INTO builds
         self.assertEqual(self.bblistener.tc_queue.createArtifact.call_count, 1)
         self.assertEqual(self.bblistener.tc_queue.reportException.call_count, 1)
         # Build and Task are done - should be deleted from our db.
-        self.assertEqual(self.tasks.count().execute().fetchone()[0], 0)
+        self.assertEqual(self.tasks.count().where(self.tasks.c.buildrequestId == 1).execute().fetchone()[0], 0)
 
     def testHandleFinishedRetry(self):
         self._handleFinishedTest(RETRY)
@@ -221,15 +221,55 @@ INSERT INTO builds
         self.assertEqual(self.bblistener.tc_queue.createArtifact.call_count, 1)
         self.assertEqual(self.bblistener.tc_queue.reportException.call_count, 1)
         # Unlike other status, the BuildRequest is NOT finished if a RETRY is hit
-        self.assertEqual(self.tasks.count().execute().fetchone()[0], 1)
+        self.assertEqual(self.tasks.count().where(self.tasks.c.buildrequestId == 1).execute().fetchone()[0], 1)
 
-    def testHandleFinishedCancelled(self):
+    def testHandleFinishedCancelledInBuildbot(self):
+        self.bblistener.tc_queue.status.return_value = {
+            "status": {
+                "runs": [{
+                    "state": "running",
+                    "runId": 0,
+                }],
+            },
+        }
         self._handleFinishedTest(CANCELLED)
 
         self.assertEqual(self.bblistener.tc_queue.createArtifact.call_count, 1)
         self.assertEqual(self.bblistener.tc_queue.cancelTask.call_count, 1)
         # Build and Task are done - should be deleted from our db.
-        self.assertEqual(self.tasks.count().execute().fetchone()[0], 0)
+        self.assertEqual(self.tasks.count().where(self.tasks.c.buildrequestId == 1).execute().fetchone()[0], 0)
+
+    def testHandleFinishedCancelledInTCBuildStarted(self):
+        self.bblistener.tc_queue.status.return_value = {
+            "status": {
+                "runs": [{
+                    "reasonResolved": "cancelled",
+                    "runId": 0,
+                }],
+            },
+        }
+        self._handleFinishedTest(CANCELLED)
+
+        self.assertEqual(self.bblistener.tc_queue.createArtifact.call_count, 1)
+        self.assertEqual(self.bblistener.tc_queue.cancelTask.call_count, 0)
+        # Build and Task are done - should be deleted from our db.
+        self.assertEqual(self.tasks.count().where(self.tasks.c.buildrequestId == 1).execute().fetchone()[0], 0)
+
+    def testHandleFinishedCancelledInTCDeadlineExceeded(self):
+        self.bblistener.tc_queue.status.return_value = {
+            "status": {
+                "runs": [{
+                    "reasonResolved": "deadline-exceeded",
+                    "runId": 0,
+                }],
+            },
+        }
+        self._handleFinishedTest(CANCELLED)
+
+        self.assertEqual(self.bblistener.tc_queue.createArtifact.call_count, 1)
+        self.assertEqual(self.bblistener.tc_queue.cancelTask.call_count, 0)
+        # Build and Task are done - should be deleted from our db.
+        self.assertEqual(self.tasks.count().where(self.tasks.c.buildrequestId == 1).execute().fetchone()[0], 0)
 
     def testHandleFinishedIgnoredBuilder(self):
         self.buildbot_db.execute(sa.text("""
@@ -448,6 +488,9 @@ class TestTCListener(unittest.TestCase):
             worker_id="fake",
             restricted_builders=(
                 ".*restricted.*",
+            ),
+            ignored_builders=(
+                ".*ignored.*",
             ),
         )
         # Replace the TaskCluster Queue object with a Mock because we never
@@ -673,6 +716,57 @@ class TestTCListener(unittest.TestCase):
         self.assertEqual(bbb_state[0].createdDate, 23)
         self.assertEqual(bbb_state[0].processedDate, 34)
         self.assertEqual(bbb_state[0].takenUntil, None)
+
+    def testHandlePendingDisallowedBuilder(self):
+        taskid = makeTaskId()
+        data = {"status": {
+            "taskId": taskid,
+            "runs": [
+                {"runId": 0},
+            ],
+        }}
+
+        self.tclistener.tc_queue.task.return_value = {
+            "created": 20,
+            "payload": {
+                "buildername": "builder bad name",
+                "sourcestamp": {
+                    "branch": "https://hg.mozilla.org/integration/mozilla-inbound/",
+                    "revision": "abcdef123456",
+                },
+            },
+        }
+        self.tclistener.handlePending(data, Mock())
+
+        self.assertEqual(self.tclistener.tc_queue.claimTask.call_count, 1)
+        self.assertEqual(self.tclistener.tc_queue.reportException.call_count, 1)
+        self.assertIn({"reason": "malformed-payload"}, self.tclistener.tc_queue.reportException.call_args[0])
+
+    def testHandlePendingIgnoredBuilder(self):
+        taskid = makeTaskId()
+        data = {"status": {
+            "taskId": taskid,
+            "runs": [
+                {"runId": 0},
+            ],
+        }}
+
+        self.tclistener.tc_queue.task.return_value = {
+            "created": 20,
+            "payload": {
+                "buildername": "builder ignored name",
+                "sourcestamp": {
+                    "branch": "https://hg.mozilla.org/integration/mozilla-inbound/",
+                    "revision": "abcdef123456",
+                },
+            },
+        }
+        self.tclistener.handlePending(data, Mock())
+
+        self.assertEqual(self.tclistener.tc_queue.claimTask.call_count, 0)
+        self.assertEqual(self.tclistener.tc_queue.reportException.call_count, 0)
+        bbb_state = self.tasks.select().execute().fetchall()
+        self.assertEqual(len(bbb_state), 0)
 
     def testHandleExceptionCancellationBuildStarted(self):
         taskid = makeTaskId()

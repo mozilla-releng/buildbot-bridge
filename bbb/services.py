@@ -4,6 +4,7 @@ import time
 
 import arrow
 from jsonschema import Draft4Validator
+from taskcluster import scope_match
 from taskcluster.exceptions import TaskclusterRestFailure
 import yaml
 
@@ -18,6 +19,14 @@ log = logging.getLogger(__name__)
 
 # Buildbot status'- these must match http://mxr.mozilla.org/build/source/buildbot/master/buildbot/status/builder.py#25
 SUCCESS, WARNINGS, FAILURE, SKIPPED, EXCEPTION, RETRY, CANCELLED = range(7)
+
+
+def matches_pattern(s, patterns):
+    """Returns True if "s" matches any of the given patterns. False otherwise."""
+    for pat in patterns:
+        if re.match(pat, s):
+            return True
+    return False
 
 
 class BuildbotListener(ListenerService):
@@ -196,14 +205,24 @@ class BuildbotListener(ListenerService):
                 #    the TCListener received that event and cancelled the Build
                 #    in Buildbot. When that Build finished it still got picked
                 #    up by us, and now we're here. The Buildbot and Taskcluster
-                #    states are already in sync, so we don't technically need
-                #    call cancelTask, but it doesn't hurt to (it just returns
-                #    the current Task status).
+                #    states are already in sync, so we don't need to do anything.
+                # 3) The Task exceeds its deadline, and Taskcluster resolves
+                #    it with a deadline-exceeded exception. In this case, the
+                #    TCListener receives that event and cancels the running
+                #    Build. That events gets picked up us and now we're here.
+                #    This is very similar to the cancellation case, except that
+                #    there's Buildbot equivalent to "deadline-exceeded", so we
+                #    just leave things be with Buildbot calling it CANCELLED
+                #    and Taskcluster calling it deadline-exceeded.
                 #
-                # In both cases we need to delete the BuildRequest from our own
+                # In all cases we need to delete the BuildRequest from our own
                 # database.
                 log.info("Marking task %s as cancelled", taskid)
-                self.tc_queue.cancelTask(taskid)
+                status = self.tc_queue.status(taskid)["status"]["runs"][runid]
+                # If the Task is still running on Taskcluster, cancel it.
+                if status.get("state") == "running":
+                    self.tc_queue.cancelTask(taskid)
+
                 if not msg.acknowledged:
                     msg.ack()
                 self.bbb_db.deleteBuildRequest(brid)
@@ -334,8 +353,9 @@ class TCListener(ListenerService):
 
     def __init__(self, pulse_queue_basename, pulse_exchange_basename, worker_type,
                  provisioner_id, worker_group, worker_id, selfserve_url,
-                 restricted_builders=(), *args, **kwargs):
+                 restricted_builders=(), ignored_builders=(), *args, **kwargs):
         self.restricted_builders = restricted_builders
+        self.ignored_builders = ignored_builders
         self.worker_group = worker_group
         self.worker_id = worker_id
         self.selfserve = SelfserveClient(selfserve_url)
@@ -364,21 +384,16 @@ class TCListener(ListenerService):
         not match the overall restricted builder patterns do not require any
         scopes. Builders that do must have a buildbot-bridge:builder-name:
         scope that matches the builder name given."""
+        requiredscopes = [["buildbot-bridge:builder-name:{}".format(buildername)]]
+
         for r in self.restricted_builders:
             if re.match(r, buildername):
-                break
+                print scopes
+                print requiredscopes
+                return scope_match(scopes, requiredscopes)
         # If not restricted
         else:
             return True
-
-        requiredscope = "buildbot-bridge:builder-name:" + buildername
-        for scope in scopes:
-            if scope == requiredscope:
-                return True
-            if scope.endswith("*") and requiredscope.startswith(scope[:-1]):
-                return True
-        return False
-
 
     def handlePending(self, data, msg):
         """When a Task becomes pending in Taskcluster it may be because the
@@ -397,6 +412,14 @@ class TCListener(ListenerService):
         our_task = self.bbb_db.getTask(taskid)
 
         buildername = tc_task["payload"].get("buildername")
+        # If the builder name matches an ignored pattern, we shouldn't do
+        # anything. See https://bugzilla.mozilla.org/show_bug.cgi?id=1201861
+        # for additional background.
+        if matches_pattern(buildername, self.ignored_builders):
+            log.debug("Buildername %s matches an ignore pattern, doing nothing", buildername)
+            msg.ack()
+            return
+
         scopes = tc_task.get("scopes", [])
         if not self.payload_schema.is_valid(tc_task["payload"]) or not self._isAuthorized(buildername, scopes):
             log.info("Payload is invalid for task %s, refusing to create BuildRequest", taskid)
