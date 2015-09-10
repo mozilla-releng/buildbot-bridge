@@ -8,6 +8,7 @@ tasks:
   - provisionerId: "{{ taskcluster.docker.provisionerId }}"
     workerType: "{{ taskcluster.docker.workerType }}"
     payload:
+      maxRunTime: 1200
       image: "bhearsum/python-test-runner"
       command:
         - "/bin/bash"
