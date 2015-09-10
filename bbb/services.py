@@ -384,14 +384,17 @@ class TCListener(ListenerService):
         not match the overall restricted builder patterns do not require any
         scopes. Builders that do must have a buildbot-bridge:builder-name:
         scope that matches the builder name given."""
-        requiredscopes = [["buildbot-bridge:builder-name:{}".format(buildername)]]
+        requiredscopes = [
+            ["buildbot-bridge:builder-name:{}".format(buildername)]
+        ]
 
         for r in self.restricted_builders:
+            # If the builder is restricted, check the scopes to see if they
+            # are authorized to use it.
             if re.match(r, buildername):
-                print scopes
-                print requiredscopes
                 return scope_match(scopes, requiredscopes)
-        # If not restricted
+        # If the builder is unrestricted, no special scopes are required to
+        # use it.
         else:
             return True
 

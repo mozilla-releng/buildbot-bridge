@@ -717,31 +717,6 @@ class TestTCListener(unittest.TestCase):
         self.assertEqual(bbb_state[0].processedDate, 34)
         self.assertEqual(bbb_state[0].takenUntil, None)
 
-    def testHandlePendingDisallowedBuilder(self):
-        taskid = makeTaskId()
-        data = {"status": {
-            "taskId": taskid,
-            "runs": [
-                {"runId": 0},
-            ],
-        }}
-
-        self.tclistener.tc_queue.task.return_value = {
-            "created": 20,
-            "payload": {
-                "buildername": "builder bad name",
-                "sourcestamp": {
-                    "branch": "https://hg.mozilla.org/integration/mozilla-inbound/",
-                    "revision": "abcdef123456",
-                },
-            },
-        }
-        self.tclistener.handlePending(data, Mock())
-
-        self.assertEqual(self.tclistener.tc_queue.claimTask.call_count, 1)
-        self.assertEqual(self.tclistener.tc_queue.reportException.call_count, 1)
-        self.assertIn({"reason": "malformed-payload"}, self.tclistener.tc_queue.reportException.call_args[0])
-
     def testHandlePendingIgnoredBuilder(self):
         taskid = makeTaskId()
         data = {"status": {
@@ -755,6 +730,32 @@ class TestTCListener(unittest.TestCase):
             "created": 20,
             "payload": {
                 "buildername": "builder ignored name",
+                "sourcestamp": {
+                    "branch": "https://hg.mozilla.org/integration/mozilla-inbound/",
+                    "revision": "abcdef123456",
+                },
+            },
+        }
+        self.tclistener.handlePending(data, Mock())
+
+        self.assertEqual(self.tclistener.tc_queue.claimTask.call_count, 0)
+        self.assertEqual(self.tclistener.tc_queue.reportException.call_count, 0)
+        bbb_state = self.tasks.select().execute().fetchall()
+        self.assertEqual(len(bbb_state), 0)
+
+    def testHandlePendingIgnoredAndRestrictedBuilder(self):
+        taskid = makeTaskId()
+        data = {"status": {
+            "taskId": taskid,
+            "runs": [
+                {"runId": 0},
+            ],
+        }}
+
+        self.tclistener.tc_queue.task.return_value = {
+            "created": 20,
+            "payload": {
+                "buildername": "restricted builder ignored name",
                 "sourcestamp": {
                     "branch": "https://hg.mozilla.org/integration/mozilla-inbound/",
                     "revision": "abcdef123456",
