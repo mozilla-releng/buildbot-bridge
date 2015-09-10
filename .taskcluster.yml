@@ -13,7 +13,7 @@ tasks:
       command:
         - "/bin/bash"
         - "-c"
-        - "checkout-pull-request && tox -e py27"
+        - "git clone {{ event.head.repo.url }} && cd buildbot-bridge && git checkout {{ event.head.repo.branch }} && tox -e py27"
     extra:
       github:
         env: true
