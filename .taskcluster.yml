@@ -22,5 +22,5 @@ tasks:
     metadata:
       name: Buildbot Bridge Pull Request
       description: Pull Request
-        owner: "{{ event.head.user.email }}"
-        source: "{{ event.head.repo.url }}"
+      owner: "{{ event.head.user.email }}"
+      source: "{{ event.head.repo.url }}"
