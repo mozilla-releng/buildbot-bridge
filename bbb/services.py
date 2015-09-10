@@ -388,6 +388,13 @@ class TCListener(ListenerService):
             ["buildbot-bridge:builder-name:{}".format(buildername)]
         ]
 
+        # Short term workaround for bug 1196407: plain "*" scopes shouldn't
+        # grant you access to restricted builders. You need to have a specific
+        # builder-name scope to get access.
+        scopes = list(scopes)
+        if "*" in scopes:
+            scopes.remove("*")
+
         for r in self.restricted_builders:
             # If the builder is restricted, check the scopes to see if they
             # are authorized to use it.

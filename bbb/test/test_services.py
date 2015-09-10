@@ -520,6 +520,9 @@ class TestTCListener(unittest.TestCase):
     def testIsAuthorizedNotAuthorized(self):
         self.assertFalse(self.tclistener._isAuthorized("restricted good", ()))
 
+    def testIsAuthorizedStarScopeNotAuthorized(self):
+        self.assertFalse(self.tclistener._isAuthorized("restricted good", ("*",)))
+
     @patch("arrow.now")
     def testHandlePendingNewTask(self, fake_now):
         taskid = makeTaskId()
