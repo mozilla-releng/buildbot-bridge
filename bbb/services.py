@@ -4,6 +4,7 @@ import time
 
 import arrow
 from jsonschema import Draft4Validator
+from taskcluster import scope_match
 from taskcluster.exceptions import TaskclusterRestFailure
 import yaml
 
@@ -35,10 +36,9 @@ class BuildbotListener(ListenerService):
      * Build finished (build.$builder.$buildnum.log_uploaded)
     """
     def __init__(self, tc_worker_group, tc_worker_id, pulse_queue_basename, pulse_exchange,
-                 allowed_builders=(), *args, **kwargs):
+                 *args, **kwargs):
         self.tc_worker_group = tc_worker_group
         self.tc_worker_id = tc_worker_id
-        self.allowed_builders = allowed_builders
         events = (
             ListenerServiceEvent(
                 queue_name="%s/started" % pulse_queue_basename,
@@ -67,11 +67,6 @@ class BuildbotListener(ListenerService):
         buildername = data["payload"]["build"]["builderName"]
         master = data["_meta"]["master_name"]
         incarnation = data["_meta"]["master_incarnation"]
-
-        if not matches_pattern(buildername, self.allowed_builders):
-            log.debug("Builder %s doesn't match an allowed pattern, ignoring it", buildername)
-            msg.ack()
-            return
 
         for brid in self.buildbot_db.getBuildRequests(buildnumber, buildername, master, incarnation):
             brid = brid[0]
@@ -133,13 +128,6 @@ class BuildbotListener(ListenerService):
             results = data["payload"]["build"]["results"]
         except KeyError:
             log.error("Couldn't find job results from %s, can't proceed", data["payload"]["build"]["results"])
-            msg.ack()
-            return
-
-        buildername = data["payload"]["build"]["builderName"]
-
-        if not matches_pattern(buildername, self.allowed_builders):
-            log.debug("Builder %s doesn't match an allowed pattern, ignoring it", buildername)
             msg.ack()
             return
 
@@ -365,8 +353,8 @@ class TCListener(ListenerService):
 
     def __init__(self, pulse_queue_basename, pulse_exchange_basename, worker_type,
                  provisioner_id, worker_group, worker_id, selfserve_url,
-                 allowed_builders=(), ignored_builders=(), *args, **kwargs):
-        self.allowed_builders = allowed_builders
+                 restricted_builders=(), ignored_builders=(), *args, **kwargs):
+        self.restricted_builders = restricted_builders
         self.ignored_builders = ignored_builders
         self.worker_group = worker_group
         self.worker_id = worker_id
@@ -389,6 +377,26 @@ class TCListener(ListenerService):
             ),
         )
         super(TCListener, self).__init__(*args, events=events, **kwargs)
+
+    def _isAuthorized(self, buildername, scopes):
+        """Tests to see if the builder given is restricted, and if so, whether
+        or not the scopes given are authorized to use it. Builders that do
+        not match the overall restricted builder patterns do not require any
+        scopes. Builders that do must have a buildbot-bridge:builder-name:
+        scope that matches the builder name given."""
+        requiredscopes = [
+            ["buildbot-bridge:builder-name:{}".format(buildername)]
+        ]
+
+        for r in self.restricted_builders:
+            # If the builder is restricted, check the scopes to see if they
+            # are authorized to use it.
+            if re.match(r, buildername):
+                return scope_match(scopes, requiredscopes)
+        # If the builder is unrestricted, no special scopes are required to
+        # use it.
+        else:
+            return True
 
     def handlePending(self, data, msg):
         """When a Task becomes pending in Taskcluster it may be because the
@@ -415,9 +423,8 @@ class TCListener(ListenerService):
             msg.ack()
             return
 
-        # However, if the builder name doesn't match an allowed pattern, or
-        # the payload is invalid, the Task should be canceled.
-        if not self.payload_schema.is_valid(tc_task["payload"]) or not matches_pattern(buildername, self.allowed_builders):
+        scopes = tc_task.get("scopes", [])
+        if not self.payload_schema.is_valid(tc_task["payload"]) or not self._isAuthorized(buildername, scopes):
             log.info("Payload is invalid for task %s, refusing to create BuildRequest", taskid)
             for e in self.payload_schema.iter_errors(tc_task["payload"]):
                 log.debug(e.message)

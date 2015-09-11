@@ -30,9 +30,6 @@ class TestBuildbotListener(unittest.TestCase):
             pulse_exchange="fake",
             tc_worker_group="workwork",
             tc_worker_id="workwork",
-            allowed_builders=(
-                ".*good.*",
-            ),
         )
         # Replace the TaskCluster Queue object with a Mock because we never
         # want to actually talk to TC, just check if the calls that would've
@@ -489,8 +486,8 @@ class TestTCListener(unittest.TestCase):
             provisioner_id="fake",
             worker_group="fake",
             worker_id="fake",
-            allowed_builders=(
-                ".*good.*",
+            restricted_builders=(
+                ".*restricted.*",
             ),
             ignored_builders=(
                 ".*ignored.*",
@@ -503,6 +500,25 @@ class TestTCListener(unittest.TestCase):
         self.tclistener.selfserve = Mock()
         self.tasks = self.tclistener.bbb_db.tasks_table
         self.buildbot_db = self.tclistener.buildbot_db.db
+
+    def testIsAuthorizedNoRestriction(self):
+        self.tclistener.restricted_builders = ()
+        self.assertTrue(self.tclistener._isAuthorized("blah", ()))
+
+    def testIsAuthorizedUnrestrictedBuilder(self):
+        self.assertTrue(self.tclistener._isAuthorized("goody", ()))
+
+    def testIsAuthorizedRestrictedBuilderWithStarScope(self):
+        self.assertTrue(self.tclistener._isAuthorized("restricted good", ("buildbot-bridge:builder-name:*",)))
+
+    def testIsAuthorizedRestrictedBuilderWithPartialStarScope(self):
+        self.assertTrue(self.tclistener._isAuthorized("restricted good", ("buildbot-bridge:builder-name:restr*",)))
+
+    def testIsAuthorizedRestrictedBuilderWithExplicitScope(self):
+        self.assertTrue(self.tclistener._isAuthorized("good restricted", ("buildbot-bridge:builder-name:good restricted",)))
+
+    def testIsAuthorizedNotAuthorized(self):
+        self.assertFalse(self.tclistener._isAuthorized("restricted good", ()))
 
     @patch("arrow.now")
     def testHandlePendingNewTask(self, fake_now):
@@ -548,6 +564,38 @@ class TestTCListener(unittest.TestCase):
             (1, u"taskId", u'["{}", "bbb"]'.format(taskid)),
             (1, u"product", u'["foo", "bbb"]'),
         ])
+
+    @patch("arrow.now")
+    def testHandlePendingNotAuthorizedRestrictedBuilder(self, fake_now):
+        taskid = makeTaskId()
+        data = {"status": {
+            "taskId": taskid,
+            "runs": [
+                {"runId": 0},
+            ],
+        }}
+
+        fake_now.return_value = arrow.Arrow(2015, 4, 1)
+        self.tclistener.tc_queue.task.return_value = {
+            "created": 50,
+            "payload": {
+                "buildername": "restricted builder name",
+                "properties": {
+                    "product": "foo",
+                },
+                "sourcestamp": {
+                    "branch": "http://foo.com/blah",
+                },
+            },
+        }
+        self.tclistener.handlePending(data, Mock())
+
+        self.assertEqual(self.tclistener.tc_queue.task.call_count, 1)
+        self.assertEqual(self.tasks.count().execute().fetchone()[0], 0)
+        self.assertEqual(self.tclistener.buildbot_db.buildrequests_table.count().execute().fetchone()[0], 0)
+        self.assertEqual(self.tclistener.tc_queue.claimTask.call_count, 1)
+        self.assertEqual(self.tclistener.tc_queue.reportException.call_count, 1)
+        self.assertIn({"reason": "malformed-payload"}, self.tclistener.tc_queue.reportException.call_args[0])
 
     @patch("arrow.now")
     def testHandlePendingNewTaskWithHighPriority(self, fake_now):
@@ -669,31 +717,6 @@ class TestTCListener(unittest.TestCase):
         self.assertEqual(bbb_state[0].processedDate, 34)
         self.assertEqual(bbb_state[0].takenUntil, None)
 
-    def testHandlePendingDisallowedBuilder(self):
-        taskid = makeTaskId()
-        data = {"status": {
-            "taskId": taskid,
-            "runs": [
-                {"runId": 0},
-            ],
-        }}
-
-        self.tclistener.tc_queue.task.return_value = {
-            "created": 20,
-            "payload": {
-                "buildername": "builder bad name",
-                "sourcestamp": {
-                    "branch": "https://hg.mozilla.org/integration/mozilla-inbound/",
-                    "revision": "abcdef123456",
-                },
-            },
-        }
-        self.tclistener.handlePending(data, Mock())
-
-        self.assertEqual(self.tclistener.tc_queue.claimTask.call_count, 1)
-        self.assertEqual(self.tclistener.tc_queue.reportException.call_count, 1)
-        self.assertIn({"reason": "malformed-payload"}, self.tclistener.tc_queue.reportException.call_args[0])
-
     def testHandlePendingIgnoredBuilder(self):
         taskid = makeTaskId()
         data = {"status": {
@@ -707,6 +730,32 @@ class TestTCListener(unittest.TestCase):
             "created": 20,
             "payload": {
                 "buildername": "builder ignored name",
+                "sourcestamp": {
+                    "branch": "https://hg.mozilla.org/integration/mozilla-inbound/",
+                    "revision": "abcdef123456",
+                },
+            },
+        }
+        self.tclistener.handlePending(data, Mock())
+
+        self.assertEqual(self.tclistener.tc_queue.claimTask.call_count, 0)
+        self.assertEqual(self.tclistener.tc_queue.reportException.call_count, 0)
+        bbb_state = self.tasks.select().execute().fetchall()
+        self.assertEqual(len(bbb_state), 0)
+
+    def testHandlePendingIgnoredAndRestrictedBuilder(self):
+        taskid = makeTaskId()
+        data = {"status": {
+            "taskId": taskid,
+            "runs": [
+                {"runId": 0},
+            ],
+        }}
+
+        self.tclistener.tc_queue.task.return_value = {
+            "created": 20,
+            "payload": {
+                "buildername": "restricted builder ignored name",
                 "sourcestamp": {
                     "branch": "https://hg.mozilla.org/integration/mozilla-inbound/",
                     "revision": "abcdef123456",

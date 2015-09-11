@@ -5,7 +5,7 @@ except:
 
 setup(
     name="bbb",
-    version="1.4.2",
+    version="1.5",
     description="Buildbot <-> Taskcluster Bridge",
     author="Mozilla Release Engineering",
     packages=["bbb", "bbb.schemas"],
@@ -21,7 +21,7 @@ setup(
         # Because taskcluster hard pins this version...
         "requests==2.4.3",
         "arrow",
-        "taskcluster>=0.0.16",
+        "taskcluster>=0.0.26",
         "sqlalchemy",
         "kombu",
         "redo",

@@ -16,8 +16,8 @@
     "tc_worker_group": "buildbot-bridge",
     "tc_worker_id": "buildbot-bridge",
 
-    "allowed_builders": [
-        ".*alder.*"
+    "restricted_builders": [
+        "^release-.*$"
     ],
     "ignored_builders": [
         "^((?!alder).)*$"

@@ -45,7 +45,6 @@ def main():
             pulse_exchange=config["bblistener"]["pulse_exchange"],
             tc_worker_group=config["tc_worker_group"],
             tc_worker_id=config["tc_worker_id"],
-            allowed_builders=config["allowed_builders"],
             **kwargs
         )
     elif args.service[0] == "reflector":
@@ -66,7 +65,7 @@ def main():
             provisioner_id=config["tclistener"]["provisioner_id"],
             worker_group=config["tc_worker_group"],
             worker_id=config["tc_worker_id"],
-            allowed_builders=config["allowed_builders"],
+            restricted_builders=config["restricted_builders"],
             ignored_builders=config["ignored_builders"],
             **kwargs
         )
