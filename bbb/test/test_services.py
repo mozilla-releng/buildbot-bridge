@@ -509,13 +509,13 @@ class TestTCListener(unittest.TestCase):
         self.assertTrue(self.tclistener._isAuthorized("goody", ()))
 
     def testIsAuthorizedRestrictedBuilderWithStarScope(self):
-        self.assertTrue(self.tclistener._isAuthorized("restricted good", ("buildbot-bridge:builder-name:*",)))
+        self.assertFalse(self.tclistener._isAuthorized("restricted good", ("buildbot-bridge:builder-name:*",)))
 
     def testIsAuthorizedRestrictedBuilderWithPartialStarScope(self):
-        self.assertTrue(self.tclistener._isAuthorized("restricted good", ("buildbot-bridge:builder-name:restr*",)))
+        self.assertFalse(self.tclistener._isAuthorized("restricted good", ("buildbot-bridge:builder-name:restr*",)))
 
     def testIsAuthorizedRestrictedBuilderWithExplicitScope(self):
-        self.assertTrue(self.tclistener._isAuthorized("good restricted", ("buildbot-bridge:builder-name:good restricted",)))
+        self.assertFalse(self.tclistener._isAuthorized("good restricted", ("buildbot-bridge:builder-name:good restricted",)))
 
     def testIsAuthorizedNotAuthorized(self):
         self.assertFalse(self.tclistener._isAuthorized("restricted good", ()))
