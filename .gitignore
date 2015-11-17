@@ -1,3 +1,7 @@
+#vim
+*.swp
+*.swo
+
 #python-mode
 .ropeproject
 
