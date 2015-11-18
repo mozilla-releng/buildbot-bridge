@@ -35,6 +35,7 @@ class TestBuildbotListener(unittest.TestCase):
         # want to actually talk to TC, just check if the calls that would've
         # been made are correct
         self.bblistener.tc_queue = Mock()
+        self.bblistener.tc_queue.task.return_value = {"expires": "2099-12-25:00:00:00"}
         self.tasks = self.bblistener.bbb_db.tasks_table
         self.buildbot_db = self.bblistener.buildbot_db.db
 
