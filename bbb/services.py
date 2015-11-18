@@ -145,7 +145,8 @@ class BuildbotListener(ListenerService):
 
             # Attach properties as artifacts
             log.info("Attaching properties to task %s", taskid)
-            expires = arrow.now().replace(weeks=1).isoformat()
+            # Our artifact must expire at or before the task's expiration
+            expires = self.tc_queue.task(taskid)['expires']
             try:
                 createJsonArtifact(self.tc_queue, taskid, runid, "public/properties.json", properties, expires)
             except TaskclusterRestFailure as e:
