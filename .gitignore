@@ -1,3 +1,10 @@
+#vim
+*.swp
+*.swo
+
+#python-mode
+.ropeproject
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]

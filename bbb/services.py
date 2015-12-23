@@ -145,13 +145,17 @@ class BuildbotListener(ListenerService):
 
             # Attach properties as artifacts
             log.info("Attaching properties to task %s", taskid)
-            expires = arrow.now().replace(weeks=1).isoformat()
+            # Our artifact must expire at or before the task's expiration
+            expires = self.tc_queue.task(taskid)['expires']
             try:
                 createJsonArtifact(self.tc_queue, taskid, runid, "public/properties.json", properties, expires)
-            except TaskclusterRestFailure:
+            except TaskclusterRestFailure as e:
                 # TODO: Probably tried to create an artifact for a completed job. This can be reworked
                 # after bug 1148860 is fixed.
                 log.exception("Caught exception when creating an artifact for %s (Task is probably already completed), not retrying...", taskid)
+                # the exception object has some non-standard attributes which
+                # won't show up in the default stacktrace
+                log.error("status_code: %i body: %s", e.status_code, e.body)
                 if not msg.acknowledged:
                     msg.ack()
 
