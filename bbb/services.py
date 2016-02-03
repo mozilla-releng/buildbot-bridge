@@ -389,7 +389,8 @@ class TCListener(ListenerService):
         scopes. Builders that do must have a buildbot-bridge:builder-name:
         scope that matches the builder name given."""
         requiredscopes = [
-            ["buildbot-bridge:builder-name:{}".format(buildername)]
+            ["buildbot-bridge:builder-name:{}".format(buildername)],
+            ["project:releng:buildbot-bridge:builder-name:{}".format(buildername)]
         ]
 
         for r in self.restricted_builders:
