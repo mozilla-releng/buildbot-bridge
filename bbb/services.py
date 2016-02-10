@@ -386,8 +386,9 @@ class TCListener(ListenerService):
         """Tests to see if the builder given is restricted, and if so, whether
         or not the scopes given are authorized to use it. Builders that do
         not match the overall restricted builder patterns do not require any
-        scopes. Builders that do must have a buildbot-bridge:builder-name:
-        scope that matches the builder name given."""
+        scopes. Builders that do must have a
+        project:releng:buildbot-bridge:builder-name: scope that matches the
+        builder name given."""
         requiredscopes = [
             ["buildbot-bridge:builder-name:{}".format(buildername)],
             ["project:releng:buildbot-bridge:builder-name:{}".format(buildername)]
