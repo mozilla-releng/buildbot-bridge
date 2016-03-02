@@ -76,11 +76,16 @@ class BuildbotListener(ListenerService):
                 log.debug("Task not found for brid %s (%s), nothing to do.", brid, buildername)
                 continue
             log.info("Claiming %s", task.taskId)
-            # Taskcluster requires runId to be an int, but it comes to us as a long.
-            claim = self.tc_queue.claimTask(task.taskId, int(task.runId), {
-                "workerGroup": self.tc_worker_group,
-                "workerId": self.tc_worker_id,
-            })
+            try:
+                # Taskcluster requires runId to be an int, but it comes to us as a long.
+                claim = self.tc_queue.claimTask(task.taskId, int(task.runId), {
+                    "workerGroup": self.tc_worker_group,
+                    "workerId": self.tc_worker_id,
+                })
+            except TaskclusterRestFailure as e:
+                log.info("Cannot claim task %s run %s, skipping...", task.taskId, int(task.runId))
+                log.error("status_code: %s body: %s", e.status_code, e.body)
+                continue
             # Once we've claimed the Task we're past the point of no return.
             # Even if something goes wrong after this, we wouldn't want the
             # message to be processed again.
@@ -134,112 +139,100 @@ class BuildbotListener(ListenerService):
         # For each request, get the taskId and runId
         for brid in request_ids[0]:
             try:
-                task = self.bbb_db.getTaskFromBuildRequest(brid)
-                taskid = task.taskId
-                runid = int(task.runId)
-            except TaskNotFound:
-                # There's no TC task associated with this BB job
-                log.debug("Task not found for brid %s, nothing to do.", brid)
-                continue
-
-            log.debug("brid %i : taskId %s : runId %i", brid, taskid, runid)
-
-            # Attach properties as artifacts
-            log.info("Attaching properties to task %s", taskid)
-            # Our artifact must expire at or before the task's expiration
-            expires = self.tc_queue.task(taskid)['expires']
-            try:
-                createJsonArtifact(self.tc_queue, taskid, runid, "public/properties.json", properties, expires)
+                self._handleFinishedRequest(brid, properties, results)
             except TaskclusterRestFailure as e:
-                # TODO: Probably tried to create an artifact for a completed job. This can be reworked
-                # after bug 1148860 is fixed.
-                log.exception("Caught exception when creating an artifact for %s (Task is probably already completed), not retrying...", taskid)
                 # the exception object has some non-standard attributes which
                 # won't show up in the default stacktrace
-                log.error("status_code: %i body: %s", e.status_code, e.body)
+                log.error("status_code: %s body: %s", e.status_code, e.body)
+            except Exception:
+                log.exception("Failed to handle %s", brid)
+            finally:
                 if not msg.acknowledged:
                     msg.ack()
 
-            # Once we've updated Taskcluster with the resolution we're past the
-            # point of no return. Even if something goes wrong afterwards we
-            # don't want the message to be processed again because Taskcluster
-            # will end up returning errors.
-            log.info("Buildbot results are %s", results)
-            if results == SUCCESS:
-                log.info("Marking task %s as completed", taskid)
-                self.tc_queue.reportCompleted(taskid, runid)
-                if not msg.acknowledged:
-                    msg.ack()
-                self.bbb_db.deleteBuildRequest(brid)
-            # Eventually we probably need to set something different here.
-            elif results in (WARNINGS, FAILURE):
-                log.info("Marking task %s as failed", taskid)
-                self.tc_queue.reportFailed(taskid, runid)
-                if not msg.acknowledged:
-                    msg.ack()
-                self.bbb_db.deleteBuildRequest(brid)
-            # Should never be set for builds, but just in case...
-            elif results == SKIPPED:
-                log.info("WEIRD: Build result is SKIPPED, this shouldn't be possible...")
-                if not msg.acknowledged:
-                    msg.ack()
-            elif results == EXCEPTION:
-                log.info("Marking task %s as malformed payload exception", taskid)
-                self.tc_queue.reportException(taskid, runid, {"reason": "malformed-payload"})
-                if not msg.acknowledged:
-                    msg.ack()
-                self.bbb_db.deleteBuildRequest(brid)
-            elif results == RETRY:
-                log.info("Marking task %s as malformed payload exception and rerunning", taskid)
-                # TODO: can we use worker-shutdown instead of rerunTask here? We used malformed-payload
-                # before because TCListener didn't know how to skip build request creation for
-                # reruns....
-                # using worker-shutdown would probably be better for treeherder, because
-                # the buildbot and TC states would line up better.
-                self.tc_queue.reportException(taskid, runid, {"reason": "malformed-payload"})
-                if not msg.acknowledged:
-                    msg.ack()
-                # TODO: runid might be wrong for the rerun for a period of time because we don't update it
-                # until the TCListener gets the task-pending event. Maybe we should update it here too/instead?
-                self.tc_queue.rerunTask(taskid)
-            elif results == CANCELLED:
-                # We could end up in this block for two different reasons:
-                # 1) Someone cancels the job through Buildbot. In this case
-                #    cancelTask is needed to reflect that state on Taskcluster.
-                # 2) Someone cancels the job through Taskcluster. In this case
-                #    the TCListener received that event and cancelled the Build
-                #    in Buildbot. When that Build finished it still got picked
-                #    up by us, and now we're here. The Buildbot and Taskcluster
-                #    states are already in sync, so we don't need to do anything.
-                # 3) The Task exceeds its deadline, and Taskcluster resolves
-                #    it with a deadline-exceeded exception. In this case, the
-                #    TCListener receives that event and cancels the running
-                #    Build. That events gets picked up us and now we're here.
-                #    This is very similar to the cancellation case, except that
-                #    there's Buildbot equivalent to "deadline-exceeded", so we
-                #    just leave things be with Buildbot calling it CANCELLED
-                #    and Taskcluster calling it deadline-exceeded.
-                #
-                # In all cases we need to delete the BuildRequest from our own
-                # database.
-                log.info("Marking task %s as cancelled", taskid)
-                status = self.tc_queue.status(taskid)["status"]["runs"][runid]
-                # If the Task is still running on Taskcluster, cancel it.
-                if status.get("state") == "running":
-                    self.tc_queue.cancelTask(taskid)
+    def _handleFinishedRequest(self, brid, properties, results):
+        try:
+            task = self.bbb_db.getTaskFromBuildRequest(brid)
+            taskid = task.taskId
+            runid = int(task.runId)
+        except TaskNotFound:
+            log.warning("WEIRD: Task not found for brid %s, nothing to do.", brid)
+            return
 
-                if not msg.acknowledged:
-                    msg.ack()
-                self.bbb_db.deleteBuildRequest(brid)
-            else:
-                log.info("WEIRD: Got unknown results %s, ignoring it...", results)
-                if not msg.acknowledged:
-                    msg.ack()
+        log.debug("brid %i : taskId %s : runId %i", brid, taskid, runid)
 
-        # If everything went well and the message hasn't been acked, do it. This could
-        # happen if any of the "WEIRD" conditions are hit in every iteration of the loop
-        if not msg.acknowledged:
-            msg.ack()
+        # Attach properties as artifacts
+        log.info("Attaching properties to task %s", taskid)
+        try:
+            # Our artifact must expire at or before the task's expiration
+            expires = self.tc_queue.task(taskid)['expires']
+            createJsonArtifact(self.tc_queue, taskid, runid, "public/properties.json", properties, expires)
+        except TaskclusterRestFailure as e:
+            log.exception("Caught exception when creating an artifact for %s (Task is probably already completed), not retrying...", taskid)
+            # the exception object has some non-standard attributes which
+            # won't show up in the default stacktrace
+            log.error("status_code: %s body: %s", e.status_code, e.body)
+
+        # Once we've updated Taskcluster with the resolution we're past the
+        # point of no return. Even if something goes wrong afterwards we
+        # don't want the message to be processed again because Taskcluster
+        # will end up returning errors.
+        log.info("Buildbot results are %s", results)
+        if results == SUCCESS:
+            log.info("Marking task %s as completed", taskid)
+            self.tc_queue.reportCompleted(taskid, runid)
+            self.bbb_db.deleteBuildRequest(brid)
+        # Eventually we probably need to set something different here.
+        elif results in (WARNINGS, FAILURE):
+            log.info("Marking task %s as failed", taskid)
+            self.tc_queue.reportFailed(taskid, runid)
+            self.bbb_db.deleteBuildRequest(brid)
+        # Should never be set for builds, but just in case...
+        elif results == SKIPPED:
+            log.info("WEIRD: Build result is SKIPPED, this shouldn't be possible...")
+        elif results == EXCEPTION:
+            log.info("Marking task %s as malformed payload exception", taskid)
+            self.tc_queue.reportException(taskid, runid, {"reason": "malformed-payload"})
+            self.bbb_db.deleteBuildRequest(brid)
+        elif results == RETRY:
+            log.info("Marking task %s as malformed payload exception and rerunning", taskid)
+            # TODO: can we use worker-shutdown instead of rerunTask here? We used malformed-payload
+            # before because TCListener didn't know how to skip build request creation for
+            # reruns....
+            # using worker-shutdown would probably be better for treeherder, because
+            # the buildbot and TC states would line up better.
+            self.tc_queue.reportException(taskid, runid, {"reason": "malformed-payload"})
+            # TODO: runid might be wrong for the rerun for a period of time because we don't update it
+            # until the TCListener gets the task-pending event. Maybe we should update it here too/instead?
+            self.tc_queue.rerunTask(taskid)
+        elif results == CANCELLED:
+            # We could end up in this block for two different reasons:
+            # 1) Someone cancels the job through Buildbot. In this case
+            #    cancelTask is needed to reflect that state on Taskcluster.
+            # 2) Someone cancels the job through Taskcluster. In this case
+            #    the TCListener received that event and cancelled the Build
+            #    in Buildbot. When that Build finished it still got picked
+            #    up by us, and now we're here. The Buildbot and Taskcluster
+            #    states are already in sync, so we don't need to do anything.
+            # 3) The Task exceeds its deadline, and Taskcluster resolves
+            #    it with a deadline-exceeded exception. In this case, the
+            #    TCListener receives that event and cancels the running
+            #    Build. That events gets picked up us and now we're here.
+            #    This is very similar to the cancellation case, except that
+            #    there's Buildbot equivalent to "deadline-exceeded", so we
+            #    just leave things be with Buildbot calling it CANCELLED
+            #    and Taskcluster calling it deadline-exceeded.
+            #
+            # In all cases we need to delete the BuildRequest from our own
+            # database.
+            log.info("Marking task %s as cancelled", taskid)
+            status = self.tc_queue.status(taskid)["status"]["runs"][runid]
+            # If the Task is still running on Taskcluster, cancel it.
+            if status.get("state") == "running":
+                self.tc_queue.cancelTask(taskid)
+            self.bbb_db.deleteBuildRequest(brid)
+        else:
+            log.info("WEIRD: Got unknown results %s, ignoring it...", results)
 
 
 class Reflector(ServiceBase):
@@ -309,7 +302,10 @@ class Reflector(ServiceBase):
                 # are actually running. FIXME!!!!
                 if complete:
                     log.info("BuildRequest disappeared before starting, cancelling task")
-                    self.tc_queue.cancelTask(t.taskId)
+                    try:
+                        self.tc_queue.cancelTask(t.taskId)
+                    except TaskclusterRestFailure as e:
+                        log.error("status_code: %s body: %s", e.status_code, e.body)
                     self.bbb_db.deleteBuildRequest(t.buildrequestId)
                     continue
                 # Otherwise we're just waiting for it to start, nothing to do
@@ -448,12 +444,15 @@ class TCListener(ListenerService):
 
             # In order to report a malformed-payload on the TAsk, we need to
             # claim it first.
-            self.tc_queue.claimTask(taskid, int(runid), {
-                "workerGroup": self.worker_group,
-                "workerId": self.worker_id,
-            })
+            try:
+                self.tc_queue.claimTask(taskid, int(runid), {
+                    "workerGroup": self.worker_group,
+                    "workerId": self.worker_id,
+                })
+                self.tc_queue.reportException(taskid, runid, {"reason": "malformed-payload"})
+            except TaskclusterRestFailure as e:
+                log.error("status_code: %s body: %s", e.status_code, e.body)
             msg.ack()
-            self.tc_queue.reportException(taskid, runid, {"reason": "malformed-payload"})
             # If this Task is already in our database, we should delete it
             # because the Task has been cancelled.
             if our_task:
