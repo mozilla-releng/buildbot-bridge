@@ -441,18 +441,21 @@ INSERT INTO buildrequests
         self.assertEqual(bbb_state[0].processedDate, 25)
         self.assertEqual(bbb_state[0].takenUntil, None)
 
-    def testCancelledFromBuildbot(self):
+    @patch("arrow.now")
+    def testCancelledFromBuildbot(self, fake_now):
         self.buildbot_db.execute(sa.text("""
 INSERT INTO buildrequests
     (id, buildsetid, buildername, submitted_at, complete)
     VALUES (3, 0, "foo", 30, 1);
 """))
+        processed_date = arrow.Arrow(2015, 4, 1)
+        fake_now.return_value = arrow.Arrow(2015, 4, 1).replace(minutes=7)
         self.tasks.insert().execute(
             buildrequestId=3,
             taskId=makeTaskId(),
             runId=0,
             createdDate=20,
-            processedDate=25,
+            processedDate=processed_date.timestamp,
             takenUntil=None,
         )
 
@@ -463,6 +466,31 @@ INSERT INTO buildrequests
         self.assertEqual(self.reflector.tc_queue.cancelTask.call_count, 1)
         bbb_state = self.tasks.select().execute().fetchall()
         self.assertEqual(len(bbb_state), 0)
+
+    @patch("arrow.now")
+    def testCancelledFromBuildbot5Min(self, fake_now):
+        self.buildbot_db.execute(sa.text("""
+INSERT INTO buildrequests
+    (id, buildsetid, buildername, submitted_at, complete)
+    VALUES (3, 0, "foo", 30, 1);
+"""))
+        processed_date = arrow.Arrow(2015, 4, 1)
+        fake_now.return_value = arrow.Arrow(2015, 4, 1).replace(minutes=3)
+        self.tasks.insert().execute(
+            buildrequestId=3,
+            taskId=makeTaskId(),
+            runId=0,
+            createdDate=20,
+            processedDate=processed_date.timestamp,
+            takenUntil=None,
+        )
+
+        self.reflector.reflectTasks()
+        # a task shouldn't be cancelled within 5 minutes after it was
+        # scheduled if takenUntil is not set
+        self.assertEqual(self.reflector.tc_queue.cancelTask.call_count, 0)
+        bbb_state = self.tasks.select().execute().fetchall()
+        self.assertEqual(len(bbb_state), 1)
 
 
 class TestTCListener(unittest.TestCase):
