@@ -290,7 +290,7 @@ class Reflector(ServiceBase):
                 # was updated by BBListener. To avoid this we can try to avoid
                 # processing the buildrequest for 5 minutes.
                 if arrow.now() < arrow.get(t.processedDate).replace(minutes=5):
-                    log.debug(
+                    log.warn(
                         "Not cancelling task %s brid %s because it's within 5 minutes after completion.",
                         t.taskId, t.buildrequestId)
                     continue
