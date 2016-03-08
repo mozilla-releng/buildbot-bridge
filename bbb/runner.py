@@ -1,3 +1,4 @@
+import os
 import json
 from signal import signal, SIGTERM
 
@@ -23,7 +24,8 @@ def main():
     logfile = config[args.service[0]]["logfile"]
     if not logfile:
         logfile = "%s.log" % args.service
-    debug_logfile = "debug-%s" % logfile
+    dir_, file_ = os.path.split(logfile)
+    debug_logfile = os.path.join(dir_, "debug-%s" % file_)
 
     logging_format = "%(asctime)s - %(name)s - %(message)s"
     logging.basicConfig(filename=logfile, level=args.loglevel, format=logging_format)
