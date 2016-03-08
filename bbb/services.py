@@ -285,6 +285,16 @@ class Reflector(ServiceBase):
             # If takenUntil isn't set, this task has either never been claimed
             # or got cancelled.
             if not t.takenUntil:
+                # If the buildrequest is showing complete, there is a
+                # possibility, that the build was completed before takenUntil
+                # was updated by BBListener. To avoid this we can try to avoid
+                # processing the buildrequest for 5 minutes.
+                if arrow.now() > arrow.get(t.processedDate).replace(minutes=5):
+                    log.debug(
+                        "Not cancelling task %s brid %s because it's within 5 minutes after completion.",
+                        t.taskId, t.buildrequestId)
+                    continue
+
                 # If the buildrequest is showing complete, it was cancelled
                 # before it ever started, so we need to pass that along to
                 # taskcluster. Ideally, we'd watch Pulse for notification of
