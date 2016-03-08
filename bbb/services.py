@@ -62,11 +62,14 @@ class BuildbotListener(ListenerService):
         also update the BBB database with the claim time which triggers the
         Reflector to start reclaiming it periodically."""
         log.debug("Handling started event: %s", data)
-        # TODO: Error handling?
-        buildnumber = data["payload"]["build"]["number"]
-        buildername = data["payload"]["build"]["builderName"]
-        master = data["_meta"]["master_name"]
-        incarnation = data["_meta"]["master_incarnation"]
+        try:
+            buildnumber = data["payload"]["build"]["number"]
+            buildername = data["payload"]["build"]["builderName"]
+            master = data["_meta"]["master_name"]
+            incarnation = data["_meta"]["master_incarnation"]
+        except (TypeError, KeyError):
+            log.exception("Skipping 'started' event for %r", data)
+            return
 
         for brid in self.buildbot_db.getBuildRequests(buildnumber, buildername, master, incarnation):
             brid = brid[0]
@@ -156,7 +159,7 @@ class BuildbotListener(ListenerService):
             taskid = task.taskId
             runid = int(task.runId)
         except TaskNotFound:
-            log.warning("WEIRD: Task not found for brid %s, nothing to do.", brid)
+            log.debug("Task not found for brid %s, nothing to do.", brid)
             return
 
         log.debug("brid %i : taskId %s : runId %i", brid, taskid, runid)
@@ -307,8 +310,9 @@ class Reflector(ServiceBase):
             # continue claiming this task for now, but the BBListener should
             # come along and get rid of it soon.
             elif complete:
-                log.info("BuildRequest %i is done. BBListener should process it soon, reclaiming in the meantime", t.buildrequestId)
-                # TODO: RECLAIM!
+                log.info("BuildRequest %i is done. BBListener should process it soon", t.buildrequestId)
+                # TODO: To reclaim or not to reclaim? Reclaiming the task may
+                # lead to a race condition with BBListener's actions.
                 continue
 
             # Build is running, which means it has already been claimed.
