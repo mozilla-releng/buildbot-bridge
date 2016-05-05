@@ -138,7 +138,8 @@ class BuildbotListener(ListenerService):
                 taskid = task.taskId
                 runid = int(task.runId)
             except TaskNotFound:
-                log.warning("WEIRD: Task not found for brid %s, nothing to do.", brid)
+                # There's no TC task associated with this BB job
+                log.debug("Task not found for brid %s, nothing to do.", brid)
                 continue
 
             log.debug("brid %i : taskId %s : runId %i", brid, taskid, runid)
@@ -435,13 +436,13 @@ class TCListener(ListenerService):
         # anything. See https://bugzilla.mozilla.org/show_bug.cgi?id=1201861
         # for additional background.
         if matches_pattern(buildername, self.ignored_builders):
-            log.debug("Buildername %s matches an ignore pattern, doing nothing", buildername)
+            log.info("%s - Buildername %s matches an ignore pattern, doing nothing", taskid, buildername)
             msg.ack()
             return
 
         scopes = tc_task.get("scopes", [])
         if not self.payload_schema.is_valid(tc_task["payload"]) or not self._isAuthorized(buildername, scopes):
-            log.info("Payload is invalid for task %s, refusing to create BuildRequest", taskid)
+            log.info("%s - Payload is invalid, refusing to create BuildRequest", taskid)
             for e in self.payload_schema.iter_errors(tc_task["payload"]):
                 log.debug(e.message)
 
@@ -467,12 +468,14 @@ class TCListener(ListenerService):
         # except update our own runId. If we created a new BuildRequest for it
         # we'd end up with an extra Build.
         if our_task:
+            log.info("%s - updating run id", taskid)
             self.bbb_db.updateRunId(our_task.buildrequestId, runid)
         # If the task doesn't exist we need to insert it into our database.
         # We don't want to claim it yet though, because that will mark the task
         # as running. The BuildbotListener will take care of that when a slave
         # actually picks up the job.
         else:
+            log.info("%s - injecting task into bb", taskid)
             brid = self.buildbot_db.injectTask(taskid, runid, tc_task)
             self.bbb_db.createTask(taskid, runid, brid, parseDateString(tc_task["created"]))
 
