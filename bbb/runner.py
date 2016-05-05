@@ -6,26 +6,20 @@ log = logging.getLogger(__name__)
 
 
 def main():
-    from argparse import ArgumentParser
-    parser = ArgumentParser()
+    import argparse
+    parser = argparse.ArgumentParser()
     parser.set_defaults(
         loglevel=logging.INFO
     )
     parser.add_argument("-v", "--verbose", dest="loglevel", action="store_const", const=logging.DEBUG)
     parser.add_argument("-q", "--quiet", dest="loglevel", action="store_const", const=logging.WARN)
-    parser.add_argument("-c", "--config", dest="config", default="config.ini", required=True)
+    parser.add_argument("-c", "--config", type=argparse.FileType('r'), required=True)
     parser.add_argument("service", nargs=1, choices=["bblistener", "reflector", "tclistener"])
 
     args = parser.parse_args()
+    logging.basicConfig(level=args.loglevel, format="%(name)s - %(message)s")
 
-    config = json.load(open(args.config))
-
-    logfile = config[args.service[0]]["logfile"]
-    if not logfile:
-        logfile = "%s.log" % args.service
-
-    logging.basicConfig(filename=logfile, level=args.loglevel, format="%(asctime)s - %(name)s - %(message)s")
-    logging.getLogger("bbb").setLevel(args.loglevel)
+    config = json.load(args.config)
 
     # These need to be imported after setting up logging, otherwise they won't
     # inherit the settings properly.
