@@ -156,7 +156,7 @@ class BuildbotListener(ListenerService):
             taskid = task.taskId
             runid = int(task.runId)
         except TaskNotFound:
-            log.warning("WEIRD: Task not found for brid %s, nothing to do.", brid)
+            log.debug("Task not found for brid %s, nothing to do.", brid)
             return
 
         log.debug("brid %i : taskId %s : runId %i", brid, taskid, runid)
