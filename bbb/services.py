@@ -270,86 +270,95 @@ class Reflector(ServiceBase):
         # TODO: Probably need some error handling here to make sure all tasks
         # are processed even if one hit an exception.
         for t in self.bbb_db.tasks:
-            log.info("Processing task: %s", t.taskId)
-            complete = self.buildbot_db.isBuildRequestComplete(t.buildrequestId)
-            nBuilds = self.buildbot_db.getBuildsCount(t.buildrequestId)
-            log.debug("Task info: %s", t)
-            if complete:
-                log.debug("BuildRequest %s is complete", t.buildrequestId)
-            else:
-                log.debug("BuildRequest %s is NOT complete", t.buildrequestId)
-
-            # If takenUntil isn't set, this task has either never been claimed
-            # or got cancelled.
-            if not t.takenUntil:
-                # If the buildrequest is showing complete, there is a
-                # possibility, that the build was completed before takenUntil
-                # was updated by BBListener. To avoid this we can try to avoid
-                # processing the buildrequest for 5 minutes.
-                if arrow.now() < arrow.get(t.processedDate).replace(minutes=5):
-                    log.debug(
-                        "Not cancelling task %s brid %s because it's within 5 minutes after completion.",
-                        t.taskId, t.buildrequestId)
-                    continue
-
-                # If the buildrequest is showing complete, it was cancelled
-                # before it ever started, so we need to pass that along to
-                # taskcluster. Ideally, we'd watch Pulse for notification of
-                # this, but our version of Buildbot has a bug that causes it
-                # not to send those messages.
-                # TODO: This can race with build started events. If the reflector runs
-                # before the build started event is processed we'll cancel tasks that
-                # are actually running. FIXME!!!!
-                if complete:
-                    log.info("BuildRequest disappeared before starting, cancelling task")
-                    try:
-                        self.tc_queue.cancelTask(t.taskId)
-                    except TaskclusterRestFailure as e:
-                        log.error("status_code: %s body: %s", e.status_code, e.body)
-                    self.bbb_db.deleteBuildRequest(t.buildrequestId)
-                    continue
-                # Otherwise we're just waiting for it to start, nothing to do
-                # because it hasn't been claimed at all yet.
+            try:
+                self._reflectTask(t)
+            except TaskclusterRestFailure, e:
+                if e.superExc.response.status_code == 409:
+                    # Conflict; it's expired
+                    log.info("Deadline exceeded for task %s run, cancelling it",
+                             t.taskId, t.runId)
+                    branch = self.buildbot_db.getBranch(t.buildrequestId).split("/")[-1]
+                    for id_ in self.buildbot_db.getBuildIds(t.buildrequestId):
+                        self.selfserve.cancelBuild(branch, id_)
                 else:
-                    log.info("Build hasn't started yet, nothing to do")
-                    continue
-            # BuildRequest is complete, but hasn't been reaped yet. We should
-            # continue claiming this task for now, but the BBListener should
-            # come along and get rid of it soon.
-            elif complete:
-                log.info("BuildRequest %i is done. BBListener should process it soon, reclaiming in the meantime", t.buildrequestId)
-                # TODO: RECLAIM!
-                continue
+                    log.exception("Failed to reflect task %s run %s", t.taskId,
+                                  t.runId)
+            except:
+                log.exception("Failed to reflect task %s run %s", t.taskId,
+                              t.runId)
 
-            # Build is running, which means it has already been claimed.
-            # We need to renew the claim to make sure Taskcluster doesn't
-            # expire it on us.
+    def _reflectTask(self, t):
+        log.info("Processing task: %s", t.taskId)
+        complete = self.buildbot_db.isBuildRequestComplete(t.buildrequestId)
+        nBuilds = self.buildbot_db.getBuildsCount(t.buildrequestId)
+        log.debug("Task info: %s", t)
+        if complete:
+            log.debug("BuildRequest %s is complete", t.buildrequestId)
+        else:
+            log.debug("BuildRequest %s is NOT complete", t.buildrequestId)
+
+        # If takenUntil isn't set, this task has either never been claimed
+        # or got cancelled.
+        if not t.takenUntil:
+            # If the buildrequest is showing complete, there is a
+            # possibility, that the build was completed before takenUntil
+            # was updated by BBListener. To avoid this we can try to avoid
+            # processing the buildrequest for 5 minutes.
+            if arrow.now() < arrow.get(t.processedDate).replace(minutes=5):
+                log.debug(
+                    "Not cancelling task %s brid %s because it's within 5 minutes after completion.",
+                    t.taskId, t.buildrequestId)
+                return
+
+            # If the buildrequest is showing complete, it was cancelled
+            # before it ever started, so we need to pass that along to
+            # taskcluster. Ideally, we'd watch Pulse for notification of
+            # this, but our version of Buildbot has a bug that causes it
+            # not to send those messages.
+            # TODO: This can race with build started events. If the reflector runs
+            # before the build started event is processed we'll cancel tasks that
+            # are actually running. FIXME!!!!
+            if complete:
+                log.info("BuildRequest disappeared before starting, cancelling task")
+                try:
+                    self.tc_queue.cancelTask(t.taskId)
+                except TaskclusterRestFailure as e:
+                    log.error("status_code: %s body: %s", e.status_code, e.body)
+                self.bbb_db.deleteBuildRequest(t.buildrequestId)
+                return
+            # Otherwise we're just waiting for it to start, nothing to do
+            # because it hasn't been claimed at all yet.
             else:
-                if nBuilds > t.runId + 1:
-                    log.warn("Too many buildbot builds? runId is %i but we have %i builds", t.runId, nBuilds)
+                log.info("Build hasn't started yet, nothing to do")
+                return
+        # BuildRequest is complete, but hasn't been reaped yet. We should
+        # continue claiming this task for now, but the BBListener should
+        # come along and get rid of it soon.
+        elif complete:
+            log.info("BuildRequest %s is done for task %s, run %s. BBListener should process it soon, reclaiming in the meantime",
+                     t.buildrequestId, t.taskId, t.runId)
+            self.tc_queue.reclaimTask(t.taskId, int(t.runId))
+            return
 
-                log.debug("BuildRequest %s is in progress", t.buildrequestId)
-                # Reclaiming should only happen if we're less than 5 minutes
-                # away from the current claim expiring. Without this, every
-                # instance of the Reflector will reclaim each time it runs,
-                # which is very spammy in the logs and adds unnecessary load to
-                # Taskcluster.
-                if arrow.now() > arrow.get(t.takenUntil).replace(minutes=-5):
-                    log.info("Claim for BuildRequest %s will expire in less than 5min, reclaiming", t.buildrequestId)
-                    try:
-                        result = self.tc_queue.reclaimTask(t.taskId, int(t.runId))
-                        # Update our own db with the new claim time.
-                        self.bbb_db.updateTakenUntil(t.buildrequestId, parseDateString(result["takenUntil"]))
-                        log.info("Task %s now takenUntil %s", t.taskId, result['takenUntil'])
-                    except TaskclusterRestFailure, e:
-                        if e.superExc.response.status_code == 409:
-                            # Conflict; it's expired
-                            log.info("Deadline exceeded for Task %s, cancelling it", t.taskId)
-                            branch = self.buildbot_db.getBranch(t.buildrequestId).split("/")[-1]
-                            for id_ in self.buildbot_db.getBuildIds(t.buildrequestId):
-                                self.selfserve.cancelBuild(branch, id_)
-                        else:
-                            log.error("Couldn't reclaim task: %s", e.superExc)
+        # Build is running, which means it has already been claimed.
+        # We need to renew the claim to make sure Taskcluster doesn't
+        # expire it on us.
+        else:
+            if nBuilds > t.runId + 1:
+                log.warn("Too many buildbot builds? runId is %i but we have %i builds", t.runId, nBuilds)
+
+            log.debug("BuildRequest %s is in progress", t.buildrequestId)
+            # Reclaiming should only happen if we're less than 5 minutes
+            # away from the current claim expiring. Without this, every
+            # instance of the Reflector will reclaim each time it runs,
+            # which is very spammy in the logs and adds unnecessary load to
+            # Taskcluster.
+            if arrow.now() > arrow.get(t.takenUntil).replace(minutes=-5):
+                log.info("Claim for BuildRequest %s will expire in less than 5min, reclaiming", t.buildrequestId)
+                result = self.tc_queue.reclaimTask(t.taskId, int(t.runId))
+                # Update our own db with the new claim time.
+                self.bbb_db.updateTakenUntil(t.buildrequestId, parseDateString(result["takenUntil"]))
+                log.info("Task %s now takenUntil %s", t.taskId, result['takenUntil'])
 
 
 class TCListener(ListenerService):
