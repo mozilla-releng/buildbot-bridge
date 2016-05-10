@@ -280,6 +280,14 @@ class Reflector(ServiceBase):
                     branch = self.buildbot_db.getBranch(t.buildrequestId).split("/")[-1]
                     for id_ in self.buildbot_db.getBuildIds(t.buildrequestId):
                         self.selfserve.cancelBuild(branch, id_)
+                elif e.superExc.response.status_code == 404:
+                    log.exception("Cannot find task %s run %s in TC, removing it",
+                                  t.taskId, t.runId)
+                    self.bbb_db.deleteBuildRequest(t.buildrequestId)
+                elif e.superExc.response.status_code == 403:
+                    log.exception("Cannot modify task %s run %s in TC, removing it",
+                                  t.taskId, t.runId)
+                    self.bbb_db.deleteBuildRequest(t.buildrequestId)
                 else:
                     log.exception("Failed to reflect task %s run %s", t.taskId,
                                   t.runId)
