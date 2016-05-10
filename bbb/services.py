@@ -275,7 +275,7 @@ class Reflector(ServiceBase):
             except TaskclusterRestFailure, e:
                 if e.superExc.response.status_code == 409:
                     # Conflict; it's expired
-                    log.info("Deadline exceeded for task %s run, cancelling it",
+                    log.info("Deadline exceeded for task %s run %s, cancelling it",
                              t.taskId, t.runId)
                     branch = self.buildbot_db.getBranch(t.buildrequestId).split("/")[-1]
                     for id_ in self.buildbot_db.getBuildIds(t.buildrequestId):
