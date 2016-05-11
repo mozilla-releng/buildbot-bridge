@@ -6,7 +6,6 @@ from urlparse import urlparse
 import arrow
 from kombu import Connection, Queue, Exchange
 import requests
-from requests.exceptions import RequestException
 import sqlalchemy as sa
 import taskcluster
 
@@ -31,12 +30,7 @@ class SelfserveClient(object):
         url = "%s/%s" % (self.base_uri, url)
         log.debug("Making %s request to %s", method, url)
         r = requests.request(method, url, headers={"X-Remote-User": "buildbot-bridge"})
-        # TODO: should we raise here? Maybe return the return code so the consumer
-        # can do something better.
-        try:
-            r.raise_for_status()
-        except RequestException:
-            log.exception("Caught exception:")
+        r.raise_for_status()
 
     def cancelBuild(self, branch, id_):
         url = "%s/build/%s" % (branch, id_)

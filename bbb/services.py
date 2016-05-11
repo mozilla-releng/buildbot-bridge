@@ -6,6 +6,7 @@ import arrow
 from jsonschema import Draft4Validator
 from taskcluster import scope_match
 from taskcluster.exceptions import TaskclusterRestFailure
+from requests.exceptions import RequestException
 import yaml
 
 from . import schemas
@@ -266,6 +267,39 @@ class Reflector(ServiceBase):
             self.reflectTasks()
             time.sleep(self.interval)
 
+    def _handle_taskcluster_exceptions(self, t, exc):
+        status_code = exc.superExc.response.status_code
+
+        if status_code == 409:
+            log.warn("Deadline exceeded for task %s run %s, cancelling it",
+                     t.taskId, t.runId)
+            branch = self.buildbot_db.getBranch(t.buildrequestId).split("/")[-1]
+            try:
+                for id_ in self.buildbot_db.getBuildIds(t.buildrequestId):
+                        self.selfserve.cancelBuild(branch, id_)
+                # delete from the DB only if all cancel requests pass
+                self.bbb_db.deleteBuildRequest(t.buildrequestId)
+
+            except RequestException:
+                log.exception(
+                    "Failed to cancel task %s run %s build request ID %s",
+                    t.taskId, t.runId, t.buildrequestId)
+
+        elif status_code == 404:
+            # Expired tasks are removed from the TC DB
+            log.warn("Cannot find task %s run %s in TC, removing it", t.taskId,
+                     t.runId)
+            self.bbb_db.deleteBuildRequest(t.buildrequestId)
+
+        elif status_code == 403:
+            # Bug 1270785. Claiming a completed task returns 403.
+            log.warn("Cannot modify task %s run %s in TC, removing it",
+                     t.taskId, t.runId)
+            self.bbb_db.deleteBuildRequest(t.buildrequestId)
+        else:
+            log.warn("Unhandled TC status code %s for task %s run %s",
+                     status_code, t.taskId, t.runId)
+
     def reflectTasks(self):
         # TODO: Probably need some error handling here to make sure all tasks
         # are processed even if one hit an exception.
@@ -273,24 +307,8 @@ class Reflector(ServiceBase):
             try:
                 self._reflectTask(t)
             except TaskclusterRestFailure, e:
-                if e.superExc.response.status_code == 409:
-                    # Conflict; it's expired
-                    log.info("Deadline exceeded for task %s run %s, cancelling it",
-                             t.taskId, t.runId)
-                    branch = self.buildbot_db.getBranch(t.buildrequestId).split("/")[-1]
-                    for id_ in self.buildbot_db.getBuildIds(t.buildrequestId):
-                        self.selfserve.cancelBuild(branch, id_)
-                elif e.superExc.response.status_code == 404:
-                    log.exception("Cannot find task %s run %s in TC, removing it",
-                                  t.taskId, t.runId)
-                    self.bbb_db.deleteBuildRequest(t.buildrequestId)
-                elif e.superExc.response.status_code == 403:
-                    log.exception("Cannot modify task %s run %s in TC, removing it",
-                                  t.taskId, t.runId)
-                    self.bbb_db.deleteBuildRequest(t.buildrequestId)
-                else:
-                    log.exception("Failed to reflect task %s run %s", t.taskId,
-                                  t.runId)
+                log.exception("Taskcluster exception")
+                self._handle_taskcluster_exceptions(t, e)
             except:
                 log.exception("Failed to reflect task %s run %s", t.taskId,
                               t.runId)
