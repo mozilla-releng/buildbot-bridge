@@ -301,9 +301,10 @@ class Reflector(ServiceBase):
                      status_code, t.taskId, t.runId)
 
     def reflectTasks(self):
-        # TODO: Probably need some error handling here to make sure all tasks
-        # are processed even if one hit an exception.
-        for t in self.bbb_db.tasks:
+        tasks = list(self.bbb_db.tasks)
+        log.info("%s tasks to reflect", len(tasks))
+        for i, t in enumerate(tasks):
+            log.info("Processing task: %s (%s/%s)", t.taskId, i+1, len(tasks))
             try:
                 self._reflectTask(t)
             except TaskclusterRestFailure, e:
@@ -314,7 +315,6 @@ class Reflector(ServiceBase):
                               t.runId)
 
     def _reflectTask(self, t):
-        log.info("Processing task: %s", t.taskId)
         complete = self.buildbot_db.isBuildRequestComplete(t.buildrequestId)
         nBuilds = self.buildbot_db.getBuildsCount(t.buildrequestId)
         log.debug("Task info: %s", t)
