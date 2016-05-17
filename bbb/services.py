@@ -160,7 +160,17 @@ class BuildbotListener(ListenerService):
             log.debug("Task not found for brid %s, nothing to do.", brid)
             return
 
-        log.debug("brid %i : taskId %s : runId %i", brid, taskid, runid)
+        log.info("Handling finished task %s run %s brid %s", taskid, runid,
+                 brid)
+        # Try to claim the task in case if the "started" event comes after
+        try:
+            self.tc_queue.claimTask(taskid, runid, {
+                "workerGroup": self.tc_worker_group,
+                "workerId": self.tc_worker_id,
+            })
+            log.info("Task %s run %s claimed unexpectedly", taskid, runid)
+        except TaskclusterRestFailure:
+            log.debug("Cannot claim task %s run %s, assuming it is claimed already", taskid, runid)
 
         # Attach properties as artifacts
         log.info("Attaching properties to task %s", taskid)
