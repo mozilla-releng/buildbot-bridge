@@ -18,25 +18,25 @@ def createJsonArtifact(queue, taskid, runid, name, data, expires):
         "contentType": "application/json",
         "expires": expires,
     })
-    log.debug("Got %s", resp)
+    log.debug("task %s: run %s: createArtifact returned %s", taskid, runid, resp)
     if resp.get("storageType") != "s3":
         raise ValueError("Can't upload artifact for task %s with runid %s because storageType is wrong" % (taskid, runid))
     assert resp["storageType"] == "s3"
     put_url = resp["putUrl"]
-    log.debug("Uploading to %s", put_url)
+    log.debug("task %s: run %s: Uploading to %s", taskid, runid, put_url)
     for _ in retrier():
         try:
             resp = requests.put(put_url, data=data, headers={
                 "Content-Type": "application/json",
                 "Content-Length": len(data),
             })
-            log.debug("Got %s %s", resp, resp.headers)
+            log.debug("task %s: run %s: Got %s %s", taskid, runid, resp, resp.headers)
             return
         except Exception:
-            log.debug("Error submitting to s3", exc_info=True)
+            log.debug("task %s: run %s: Error submitting to s3", taskid, runid, exc_info=True)
             continue
     else:
-        log.error("couldn't upload artifact to s3")
+        log.error("task %s: run %s: couldn't upload artifact to s3", taskid, runid)
         raise IOError("couldn't upload artifact to s3")
 
 
