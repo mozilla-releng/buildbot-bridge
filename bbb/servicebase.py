@@ -92,11 +92,11 @@ class BBBDb(object):
             yield t
 
     def getTask(self, taskid):
-        log.info("Fetching task %s", taskid)
+        log.info("task %s: fetching task from bbbdb", taskid)
         task = self.tasks_table.select(self.tasks_table.c.taskId == taskid).execute().fetchall()
         if task:
             task = task[0]
-        log.debug("Task: %s", task)
+        log.debug("task %s: %s", taskid, task)
         return task
 
     def getTaskFromBuildRequest(self, brid):
@@ -106,8 +106,8 @@ class BBBDb(object):
         return task[0]
 
     def createTask(self, taskid, runid, brid, created_date):
-        log.info("Creating task %s", taskid)
-        log.debug("Task info: runId: %s, brid: %s, created: %s", runid, brid, created_date)
+        log.info("task %s: creating task", taskid)
+        log.debug("task %s: runId: %s, brid: %s, created: %s", taskid, runid, brid, created_date)
         self.tasks_table.insert().values(
             taskId=taskid,
             runId=runid,
@@ -117,15 +117,15 @@ class BBBDb(object):
         ).execute()
 
     def deleteBuildRequest(self, brid):
-        log.info("Deleting task with brid %s", brid)
+        log.info("buildrequest %s: deleting task from bbbdb", brid)
         self.tasks_table.delete(self.tasks_table.c.buildrequestId == brid).execute()
 
     def updateRunId(self, brid, runid):
-        log.info("Updating task with brid %s to runId %s", brid, runid)
+        log.info("buildrequest %s: updating runId to %s", brid, runid)
         self.tasks_table.update(self.tasks_table.c.buildrequestId == brid).values(runId=runid).execute()
 
     def updateTakenUntil(self, brid, taken_until):
-        log.debug("Updating task with brid %s to takenUntil %s", brid, taken_until)
+        log.debug("buildrequest %s: updating takenUntil to %s", brid, taken_until)
         self.tasks_table.update(self.tasks_table.c.buildrequestId == brid).values(takenUntil=taken_until).execute()
 
 
@@ -279,7 +279,7 @@ class BuildbotDb(object):
             complete=0,
         )
         r = self.db.execute(q)
-        log.info("Created buildrequest %s: %i", buildername, r.lastrowid)
+        log.info("buildrequest %s: created for builder %s", r.lastrowid, buildername)
         return r.lastrowid
 
 
