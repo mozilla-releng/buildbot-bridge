@@ -10,7 +10,8 @@ from requests.exceptions import RequestException
 import yaml
 
 from . import schemas
-from .servicebase import ListenerService, ServiceBase, ListenerServiceEvent, SelfserveClient, TaskNotFound
+from .servicebase import ListenerService, ServiceBase, ListenerServiceEvent, \
+    SelfserveClient, TaskNotFound, lock_table
 from .tcutils import createJsonArtifact
 from .timeutils import parseDateString
 
@@ -471,8 +472,6 @@ class TCListener(ListenerService):
         runid = data["status"]["runs"][-1]["runId"]
 
         tc_task = self.tc_queue.task(taskid)
-        our_task = self.bbb_db.getTask(taskid)
-
         buildername = tc_task["payload"].get("buildername")
         # If the builder name matches an ignored pattern, we shouldn't do
         # anything. See https://bugzilla.mozilla.org/show_bug.cgi?id=1201861
@@ -482,48 +481,57 @@ class TCListener(ListenerService):
             msg.ack()
             return
 
-        scopes = tc_task.get("scopes", [])
-        if not self.payload_schema.is_valid(tc_task["payload"]) or not self._isAuthorized(buildername, scopes):
-            log.info("task %s: run %s: Payload is invalid, refusing to create BuildRequest", taskid, runid)
-            for e in self.payload_schema.iter_errors(tc_task["payload"]):
-                log.debug(e.message)
+        # Lock the tasks table to prevent double scheduling
+        with lock_table(self.bbb_db.db, self.bbb_db.tasks_table.name):
+            our_task = self.bbb_db.getTask(taskid)
+            scopes = tc_task.get("scopes", [])
+            if not self.payload_schema.is_valid(tc_task["payload"]) or not self._isAuthorized(buildername, scopes):
+                log.info("task %s: run %s: Payload is invalid, refusing to create BuildRequest", taskid, runid)
+                for e in self.payload_schema.iter_errors(tc_task["payload"]):
+                    log.debug(e.message)
 
-            # In order to report a malformed-payload on the Task, we need to
-            # claim it first.
-            try:
-                self.tc_queue.claimTask(taskid, int(runid), {
-                    "workerGroup": self.worker_group,
-                    "workerId": self.worker_id,
-                })
-                self.tc_queue.reportException(taskid, runid, {"reason": "malformed-payload"})
-            except TaskclusterRestFailure as e:
-                log.error("task %s: run %s: status_code: %s body: %s", taskid, runid, e.status_code, e.body)
-            msg.ack()
-            # If this Task is already in our database, we should delete it
-            # because the Task has been cancelled.
+                # In order to report a malformed-payload on the Task, we need to
+                # claim it first.
+                try:
+                    self.tc_queue.claimTask(taskid, int(runid), {
+                        "workerGroup": self.worker_group,
+                        "workerId": self.worker_id,
+                    })
+                    self.tc_queue.reportException(taskid, runid, {"reason": "malformed-payload"})
+                except TaskclusterRestFailure as e:
+                    log.error("task %s: run %s: status_code: %s body: %s", taskid, runid, e.status_code, e.body)
+                msg.ack()
+                # If this Task is already in our database, we should delete it
+                # because the Task has been cancelled.
+                if our_task:
+                    # TODO: Should we kill the running Build?
+                    self.bbb_db.deleteBuildRequest(our_task.buildrequestId)
+                return
+
+            # When Buildbot Builds end up in a RETRY state they are automatically
+            # retried against the same BuildRequest. The BuildbotListener reflects
+            # this into Taskcluster be calling rerunTask, which creates a new Run
+            # for the same Task. In these cases, we don't want to do anything
+            # except update our own runId. If we created a new BuildRequest for it
+            # we'd end up with an extra Build.
             if our_task:
-                # TODO: Should we kill the running Build?
-                self.bbb_db.deleteBuildRequest(our_task.buildrequestId)
-            return
-
-        # When Buildbot Builds end up in a RETRY state they are automatically
-        # retried against the same BuildRequest. The BuildbotListener reflects
-        # this into Taskcluster be calling rerunTask, which creates a new Run
-        # for the same Task. In these cases, we don't want to do anything
-        # except update our own runId. If we created a new BuildRequest for it
-        # we'd end up with an extra Build.
-        if our_task:
-            log.info("task %s: run %s: buildrequest %s: updating run id", taskid, runid, our_task.buildrequestId)
-            self.bbb_db.updateRunId(our_task.buildrequestId, runid)
-        # If the task doesn't exist we need to insert it into our database.
-        # We don't want to claim it yet though, because that will mark the task
-        # as running. The BuildbotListener will take care of that when a slave
-        # actually picks up the job.
-        else:
-            log.info("task %s: run %s: injecting task into bb", taskid, runid)
-            brid = self.buildbot_db.injectTask(taskid, runid, tc_task)
-            self.bbb_db.createTask(taskid, runid, brid, parseDateString(tc_task["created"]))
-            log.info("task %s: run %s: buildrequest %s: injected into bb", taskid, runid, brid)
+                # Taskcluster guarantees *at least* one message per event. Check
+                # runId to ignore duplicates
+                if our_task.runId >= runid:
+                    log.info("task %s run %s brid %s: ignoring duplicated message",
+                             taskid, runid, our_task.buildrequestId)
+                else:
+                    log.info("task %s: run %s: buildrequest %s: updating run id", taskid, runid, our_task.buildrequestId)
+                    self.bbb_db.updateRunId(our_task.buildrequestId, runid)
+            # If the task doesn't exist we need to insert it into our database.
+            # We don't want to claim it yet though, because that will mark the task
+            # as running. The BuildbotListener will take care of that when a slave
+            # actually picks up the job.
+            else:
+                log.info("task %s: run %s: injecting task into bb", taskid, runid)
+                brid = self.buildbot_db.injectTask(taskid, runid, tc_task)
+                self.bbb_db.createTask(taskid, runid, brid, parseDateString(tc_task["created"]))
+                log.info("task %s: run %s: buildrequest %s: injected into bb", taskid, runid, brid)
 
         msg.ack()
 
