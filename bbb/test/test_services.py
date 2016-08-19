@@ -80,11 +80,19 @@ INSERT INTO builds
         self.buildbot_db.execute(sa.text("""
 INSERT INTO buildrequests
     (id, buildsetid, buildername, submitted_at, claimed_by_name, claimed_by_incarnation)
-    VALUES (2, 0, "good", 20, "a", "b"), (3, 0, "good", 30, "a", "b");"""))
+    VALUES (2, 0, "good", 20, "a", "b");"""))
+        self.buildbot_db.execute(sa.text("""
+INSERT INTO buildrequests
+    (id, buildsetid, buildername, submitted_at, claimed_by_name, claimed_by_incarnation)
+    VALUES (3, 0, "good", 30, "a", "b");"""))
         self.buildbot_db.execute(sa.text("""
 INSERT INTO builds
     (id, number, brid, start_time)
-    VALUES (0, 3, 2, 40), (1, 3, 3, 40);"""))
+    VALUES (0, 3, 2, 40);"""))
+        self.buildbot_db.execute(sa.text("""
+INSERT INTO builds
+    (id, number, brid, start_time)
+    VALUES (1, 3, 3, 40);"""))
         self.tasks.insert().execute(
             buildrequestId=2,
             taskId=makeTaskId(),
