@@ -23,10 +23,12 @@ ListenerServiceEvent = namedtuple("ListenerServiceEvent", ("exchange", "routing_
 def lock_table(db, table_name):
 
     try:
-        db.execute(sa.text("LOCK TABLE {} WRITE".format(table_name)))
+        if "mysql" in db.url.get_backend_name():
+            db.execute(sa.text("LOCK TABLE {} WRITE;".format(table_name)))
         yield
     finally:
-        db.execute(sa.text("UNLOCK TABLES"))
+        if "mysql" in db.url.get_backend_name():
+            db.execute(sa.text("UNLOCK TABLES;"))
 
 
 class SelfserveClient(object):
