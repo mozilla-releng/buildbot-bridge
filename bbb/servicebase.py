@@ -2,6 +2,7 @@ from collections import namedtuple
 import json
 import time
 from urlparse import urlparse
+from contextlib import contextmanager
 
 import arrow
 from kombu import Connection, Queue, Exchange
@@ -16,6 +17,18 @@ log = logging.getLogger(__name__)
 
 
 ListenerServiceEvent = namedtuple("ListenerServiceEvent", ("exchange", "routing_key", "callback", "queue_name"))
+
+
+@contextmanager
+def lock_table(db, table_name):
+
+    try:
+        if "mysql" in db.url.get_backend_name():
+            db.execute(sa.text("LOCK TABLE {} WRITE;".format(table_name)))
+        yield
+    finally:
+        if "mysql" in db.url.get_backend_name():
+            db.execute(sa.text("UNLOCK TABLES;"))
 
 
 class SelfserveClient(object):
