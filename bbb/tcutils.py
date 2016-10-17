@@ -43,3 +43,14 @@ def createJsonArtifact(queue, taskid, runid, name, data, expires):
 def makeTaskId():
     """Used in testing to generate task ids without talking to TaskCluster."""
     return slugid.nice()
+
+
+def createReferenceArtifact(queue, taskid, runid, name, url, expires,
+                            content_type):
+    """Creates a Taskcluster reference artifact for the given taskid/runid"""
+    queue.createArtifact(taskid, runid, name, {
+        "storageType": "reference",
+        "contentType": content_type,
+        "expires": expires,
+        "url": url
+    })

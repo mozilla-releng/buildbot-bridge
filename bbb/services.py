@@ -12,7 +12,7 @@ import yaml
 from . import schemas
 from .servicebase import ListenerService, ServiceBase, ListenerServiceEvent, \
     SelfserveClient, TaskNotFound, lock_table
-from .tcutils import createJsonArtifact
+from .tcutils import createJsonArtifact, createReferenceArtifact
 from .timeutils import parseDateString
 
 import logging
@@ -178,6 +178,12 @@ class BuildbotListener(ListenerService):
             # Our artifact must expire at or before the task's expiration
             expires = self.tc_queue.task(taskid)['expires']
             createJsonArtifact(self.tc_queue, taskid, runid, "public/properties.json", properties, expires)
+            if "log_url" in properties:
+                # All logs uploaded by Buildbot are gzipped
+                createReferenceArtifact(self.tc_queue, taskid, runid,
+                                        "public/logs/live_backing.log.gz",
+                                        properties["log_url"], expires,
+                                        "application/gzip")
         except TaskclusterRestFailure as e:
             log.exception("buildrequest %s: task %s: caught exception when creating an artifact (Task is probably already completed), not retrying...",
                           brid, taskid)
