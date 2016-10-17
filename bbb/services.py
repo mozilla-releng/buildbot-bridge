@@ -180,10 +180,14 @@ class BuildbotListener(ListenerService):
             createJsonArtifact(self.tc_queue, taskid, runid, "public/properties.json", properties, expires)
             if "log_url" in properties:
                 # All logs uploaded by Buildbot are gzipped
-                createReferenceArtifact(self.tc_queue, taskid, runid,
-                                        "public/logs/live_backing.log.gz",
-                                        properties["log_url"], expires,
-                                        "application/gzip")
+                try:
+                        createReferenceArtifact(
+                            self.tc_queue, taskid, runid,
+                            "public/logs/live_backing.log.gz",
+                            properties["log_url"][0], expires,
+                            "application/gzip")
+                except (TypeError, IndexError):
+                    log.exception("Unable to create log artifact")
         except TaskclusterRestFailure as e:
             log.exception("buildrequest %s: task %s: caught exception when creating an artifact (Task is probably already completed), not retrying...",
                           brid, taskid)
