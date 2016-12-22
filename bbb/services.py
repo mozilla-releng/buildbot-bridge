@@ -6,7 +6,7 @@ import arrow
 from jsonschema import Draft4Validator
 from taskcluster import scope_match
 from taskcluster.exceptions import TaskclusterRestFailure
-from requests.exceptions import RequestException
+from requests.exceptions import RequestException, HTTPError
 import yaml
 
 from . import schemas
@@ -595,7 +595,13 @@ class TCListener(ListenerService):
             # BuildRequest.
             else:
                 log.info("task %s: buildrequest %s: BuildRequest found for task, cancelling it.", taskid, brid)
-                self.selfserve.cancelBuildRequest(branch, brid)
+                try:
+                    self.selfserve.cancelBuildRequest(branch, brid)
+                except HTTPError as e:
+                    if e.response.status_code == 404:
+                        log.warn("task %s: buildrequest %s: branch %s: failed to cancel build request. Ignoring the failure.", taskid, brid, branch)
+                    else:
+                        raise
                 # Because the Build never started there's no reason to keep
                 # track of the Task any longer.
                 self.bbb_db.deleteBuildRequest(brid)

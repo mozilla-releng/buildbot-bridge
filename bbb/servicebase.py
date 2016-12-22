@@ -47,6 +47,7 @@ class SelfserveClient(object):
 
     def cancelBuild(self, branch, id_):
         url = "%s/build/%s" % (branch, id_)
+        log.info("Cancelling build: %s", url)
         self._do_request("DELETE", url)
 
     def cancelBuildRequest(self, branch, brid):
@@ -54,6 +55,7 @@ class SelfserveClient(object):
         # too soon after scheduling. not sure why, maybe it takes time for buildapi
         # or something else to become aware of their existence
         url = "%s/request/%s" % (branch, brid)
+        log.info("Cancelling build request: %s", url)
         self._do_request("DELETE", url)
 
 
