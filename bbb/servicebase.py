@@ -179,10 +179,10 @@ class BuildbotDb(object):
         self.buildset_properties_table = metadata.tables["buildset_properties"]
         self.buildsets_table = metadata.tables["buildsets"]
 
-    def isBuildRequestComplete(self, brid):
-        q = sa.select([self.buildrequests_table.c.complete])\
-              .where(self.buildrequests_table.c.id == brid)
-        return bool(self.db.execute(q).fetchall()[0][0])
+    def getBuildRequest(self, brid):
+        q = sa.select([self.buildrequests_table]).where(
+            self.buildrequests_table.c.id == brid)
+        return self.db.execute(q).fetchone()
 
     def getBuildRequests(self, buildnumber, buildername, claimed_by_name, claimed_by_incarnation):
         now = time.time()

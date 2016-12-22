@@ -475,15 +475,13 @@ INSERT INTO buildrequests
         bbb_state = self.tasks.select().execute().fetchall()
         self.assertEqual(len(bbb_state), 0)
 
-    @patch("arrow.now")
-    def testCancelledFromBuildbot5Min(self, fake_now):
+    def testIgnoreClaimedTasks(self):
         self.buildbot_db.execute(sa.text("""
 INSERT INTO buildrequests
-    (id, buildsetid, buildername, submitted_at, complete)
-    VALUES (3, 0, "foo", 30, 1);
+    (id, buildsetid, buildername, submitted_at, complete, claimed_at)
+    VALUES (3, 0, "foo", 30, 1, 5);
 """))
         processed_date = arrow.Arrow(2015, 4, 1)
-        fake_now.return_value = arrow.Arrow(2015, 4, 1).replace(minutes=3)
         self.tasks.insert().execute(
             buildrequestId=3,
             taskId=makeTaskId(),
@@ -494,8 +492,6 @@ INSERT INTO buildrequests
         )
 
         self.reflector.reflectTasks()
-        # a task shouldn't be cancelled within 5 minutes after it was
-        # scheduled if takenUntil is not set
         self.assertEqual(self.reflector.tc_queue.cancelTask.call_count, 0)
         bbb_state = self.tasks.select().execute().fetchall()
         self.assertEqual(len(bbb_state), 1)

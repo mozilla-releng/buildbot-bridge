@@ -336,8 +336,8 @@ class Reflector(ServiceBase):
                               t.runId)
 
     def _reflectTask(self, t):
-        complete = self.buildbot_db.isBuildRequestComplete(t.buildrequestId)
-        nBuilds = self.buildbot_db.getBuildsCount(t.buildrequestId)
+        build_request = self.buildbot_db.getBuildRequest(t.buildrequestId)
+        complete = build_request['complete']
         log.debug("task %s: task info: %s", t.taskId, t)
         if complete:
             log.debug("task %s: buildrequest %s: buildRequest is complete", t.taskId, t.buildrequestId)
@@ -347,25 +347,13 @@ class Reflector(ServiceBase):
         # If takenUntil isn't set, this task has either never been claimed
         # or got cancelled.
         if not t.takenUntil:
-            # If the buildrequest is showing complete, there is a
-            # possibility, that the build was completed before takenUntil
-            # was updated by BBListener. To avoid this we can try to avoid
-            # processing the buildrequest for 5 minutes.
-            if arrow.now() < arrow.get(t.processedDate).replace(minutes=5):
-                log.debug(
-                    "task %s: buildrequest %s: not cancelling task because it's within 5 minutes after completion.",
-                    t.taskId, t.buildrequestId)
-                return
-
             # If the buildrequest is showing complete, it was cancelled
             # before it ever started, so we need to pass that along to
             # taskcluster. Ideally, we'd watch Pulse for notification of
             # this, but our version of Buildbot has a bug that causes it
             # not to send those messages.
-            # TODO: This can race with build started events. If the reflector runs
-            # before the build started event is processed we'll cancel tasks that
-            # are actually running. FIXME!!!!
-            if complete:
+            cancelled_before_started = build_request['complete'] and build_request['claimed_at'] == 0
+            if cancelled_before_started:
                 log.info("task %s: buildrequest %s: BuildRequest disappeared before starting, cancelling task", t.taskId, t.buildrequestId)
                 try:
                     self.tc_queue.cancelTask(t.taskId)
@@ -391,6 +379,7 @@ class Reflector(ServiceBase):
         # We need to renew the claim to make sure Taskcluster doesn't
         # expire it on us.
         else:
+            nBuilds = self.buildbot_db.getBuildsCount(t.buildrequestId)
             if nBuilds > t.runId + 1:
                 log.warn("task %s: run %s: buildrequest %s: Too many buildbot builds? we have %i builds.", t.taskId, t.runId, t.buildrequestId, nBuilds)
 
