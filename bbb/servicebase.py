@@ -182,7 +182,7 @@ class BuildbotDb(object):
     def getBuildRequest(self, brid):
         q = sa.select([self.buildrequests_table]).where(
             self.buildrequests_table.c.id == brid)
-        return self.db.execute(q).fetchone()
+        return self.db.execute(q).first()
 
     def getBuildRequests(self, buildnumber, buildername, claimed_by_name, claimed_by_incarnation):
         now = time.time()
