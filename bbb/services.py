@@ -6,6 +6,7 @@ import arrow
 from jsonschema import Draft4Validator
 from taskcluster import scope_match
 from taskcluster.exceptions import TaskclusterRestFailure
+import requests
 from requests.exceptions import RequestException, HTTPError
 import yaml
 
@@ -21,6 +22,9 @@ log = logging.getLogger(__name__)
 
 # Buildbot status'- these must match http://mxr.mozilla.org/build/source/buildbot/master/buildbot/status/builder.py#25
 SUCCESS, WARNINGS, FAILURE, SKIPPED, EXCEPTION, RETRY, CANCELLED = range(7)
+
+# Where we can get the list of all the buildbot state
+ALL_THE_THINGS_URL = "https://secure.pub.build.mozilla.org/builddata/reports/allthethings.json"
 
 
 def matches_pattern(s, patterns):
@@ -328,7 +332,7 @@ class Reflector(ServiceBase):
             log.info("task %s: processing task (%s/%s)", t.taskId, i+1, len(tasks))
             try:
                 self._reflectTask(t)
-            except TaskclusterRestFailure, e:
+            except TaskclusterRestFailure as e:
                 log.exception("task %s: taskcluster exception", t.taskId)
                 self._handle_taskcluster_exceptions(t, e)
             except:
@@ -419,6 +423,8 @@ class TCListener(ListenerService):
         self.payload_schema = Draft4Validator(
             yaml.load(open(path.join(path.dirname(schemas.__file__), "payload.yml")))
         )
+        self.allowed_builders = None
+        self.allowed_builders_age = 0
         events = (
             ListenerServiceEvent(
                 queue_name="%s/task-pending" % pulse_queue_basename,
@@ -457,6 +463,22 @@ class TCListener(ListenerService):
         else:
             return True
 
+    def _refreshAllowedBuilders(self):
+        now = arrow.now().timestamp
+        if self.allowed_builders is None or (now - self.allowed_builders_age) > 300:
+            try:
+                resp = requests.get(ALL_THE_THINGS_URL, timeout=60)
+                resp.raise_for_status()
+                builders = resp.json()['builders']
+                self.allowed_builders = set(builders.keys())
+                self.allowed_builders_age = now
+            except Exception:
+                log.exception("Couldn't update list of builders")
+
+    def _isValidBuildername(self, buildername):
+        self._refreshAllowedBuilders()
+        return buildername in self.allowed_builders
+
     def handlePending(self, data, msg):
         """When a Task becomes pending in Taskcluster it may be because the
         Task was just created, or a new Run for an existing Task was created.
@@ -484,7 +506,7 @@ class TCListener(ListenerService):
         with lock_table(self.bbb_db.db, self.bbb_db.tasks_table.name):
             our_task = self.bbb_db.getTask(taskid)
             scopes = tc_task.get("scopes", [])
-            if not self.payload_schema.is_valid(tc_task["payload"]) or not self._isAuthorized(buildername, scopes):
+            if not self.payload_schema.is_valid(tc_task["payload"]) or not self._isAuthorized(buildername, scopes) or not self._isValidBuildername(buildername):
                 log.info("task %s: run %s: Payload is invalid, refusing to create BuildRequest", taskid, runid)
                 for e in self.payload_schema.iter_errors(tc_task["payload"]):
                     log.debug(e.message)

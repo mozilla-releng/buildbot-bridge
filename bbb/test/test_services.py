@@ -534,6 +534,18 @@ class TestTCListener(unittest.TestCase):
         self.tasks = self.tclistener.bbb_db.tasks_table
         self.buildbot_db = self.tclistener.buildbot_db.db
 
+        self.mock_get = patch('requests.get')
+        self.fake_get = self.mock_get.start()
+        self.fake_get.return_value.json.return_value = {"builders": {
+            "builder good name": {},
+            "another good name": {},
+            "restricted builder name": {},
+            "i'm a good builder": {},
+        }}
+
+    def tearDown(self):
+        self.mock_get.stop()
+
     def testIsAuthorizedNoRestriction(self):
         self.tclistener.restricted_builders = ()
         self.assertTrue(self.tclistener._isAuthorized("blah", ()))
@@ -1019,3 +1031,62 @@ INSERT INTO buildrequests
         self.assertEqual(self.tclistener.selfserve.cancelBuildRequest.call_count, 0)
         bbb_state = self.tasks.select().execute().fetchall()
         self.assertEqual(len(bbb_state), 1)
+
+    @patch("arrow.now")
+    def testRefreshAllowedBuilders(self, fake_now):
+        self.assertIsNone(self.tclistener.allowed_builders)
+
+        fake_now.return_value.timestamp = 1
+        self.tclistener._refreshAllowedBuilders()
+        self.assertIsNotNone(self.tclistener.allowed_builders)
+        self.assertEqual(self.tclistener.allowed_builders_age, 1)
+        self.assertEqual(self.fake_get.call_count, 1)
+
+        # Check that we don't re-download the data too early
+        fake_now.return_value.timestamp = 2
+        self.tclistener._refreshAllowedBuilders()
+        self.assertEqual(self.tclistener.allowed_builders_age, 1)
+        self.assertEqual(self.fake_get.call_count, 1)
+
+        # Check that we re-download the data if enough time has passed
+        fake_now.return_value.timestamp = 302
+        self.tclistener._refreshAllowedBuilders()
+        self.assertEqual(self.tclistener.allowed_builders_age, 302)
+        self.assertEqual(self.fake_get.call_count, 2)
+
+    def testIsValidBuildername(self):
+        self.assertTrue(self.tclistener._isValidBuildername("builder good name"))
+        self.assertTrue(self.tclistener._isValidBuildername("another good name"))
+        self.assertFalse(self.tclistener._isValidBuildername("builder bad name"))
+
+    @patch("arrow.now")
+    def testHandlePendingInvalidBuilder(self, fake_now):
+        taskid = makeTaskId()
+        data = {"status": {
+            "taskId": taskid,
+            "runs": [
+                {"runId": 0},
+            ],
+        }}
+
+        fake_now.return_value = arrow.Arrow(2015, 4, 1)
+        self.tclistener.tc_queue.task.return_value = {
+            "created": 50,
+            "payload": {
+                "buildername": "builder bad name",
+                "properties": {
+                    "product": "foo",
+                },
+                "sourcestamp": {
+                    "branch": "http://foo.com/blah",
+                },
+            },
+        }
+        self.tclistener.handlePending(data, Mock())
+
+        self.assertEqual(self.tclistener.tc_queue.task.call_count, 1)
+        self.assertEqual(self.tasks.count().execute().first()[0], 0)
+        self.assertEqual(self.tclistener.buildbot_db.buildrequests_table.count().execute().first()[0], 0)
+        self.assertEqual(self.tclistener.tc_queue.claimTask.call_count, 1)
+        self.assertEqual(self.tclistener.tc_queue.reportException.call_count, 1)
+        self.assertIn({"reason": "malformed-payload"}, self.tclistener.tc_queue.reportException.call_args[0])
