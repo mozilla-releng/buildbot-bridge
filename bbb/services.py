@@ -74,7 +74,11 @@ class BuildbotListener(ListenerService):
         master = data["_meta"]["master_name"]
         incarnation = data["_meta"]["master_incarnation"]
 
-        for brid in self.buildbot_db.getBuildRequests(buildnumber, buildername, master, incarnation):
+        log.info('handleStarted: fetching buildRequests')
+        buildrequests = self.buildbot_db.getBuildRequests(buildnumber, buildername, master, incarnation)
+        log.info('handleStarted: got %i buildrequests', len(buildrequests))
+
+        for brid in buildrequests:
             brid = brid[0]
             try:
                 task = self.bbb_db.getTaskFromBuildRequest(brid)

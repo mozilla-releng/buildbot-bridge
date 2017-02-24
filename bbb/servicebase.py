@@ -196,7 +196,14 @@ class BuildbotDb(object):
               .where(self.buildrequests_table.c.claimed_by_name == claimed_by_name)\
               .where(self.buildrequests_table.c.claimed_by_incarnation == claimed_by_incarnation)
         ret = self.db.execute(q).fetchall()
-        log.debug("getBuildRequests Query took %f seconds", time.time() - now)
+
+        elapsed = time.time() - now
+
+        loglevel = logging.INFO
+        if elapsed > 5:
+            loglevel = logging.WARNING
+
+        log.log(loglevel, "getBuildRequests Query took %.2f seconds", elapsed)
         return ret
 
     def getBuildsCount(self, brid):
