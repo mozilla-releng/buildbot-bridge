@@ -77,7 +77,6 @@ class BuildbotListener(ListenerService):
             properties = dict((key, (value, source)) for (key, value, source) in data["payload"]["build"]["properties"])
             pulse_taskId = properties['taskId'][0]
         except KeyError:
-            log.warning("handleStarted: couldn't parse properties")
             pulse_taskId = None
 
         log.info('handleStarted: fetching buildRequests')
@@ -522,32 +521,42 @@ class TCListener(ListenerService):
             msg.ack()
             return
 
-        # Lock the tasks table to prevent double scheduling
-        with lock_table(self.bbb_db.db, self.bbb_db.tasks_table.name):
-            our_task = self.bbb_db.getTask(taskid)
-            scopes = tc_task.get("scopes", [])
-            if not self.payload_schema.is_valid(tc_task["payload"]) or not self._isAuthorized(buildername, scopes) or not self._isValidBuildername(buildername):
-                log.info("task %s: run %s: Payload is invalid, refusing to create BuildRequest", taskid, runid)
-                for e in self.payload_schema.iter_errors(tc_task["payload"]):
-                    log.debug(e.message)
+        scopes = tc_task.get("scopes", [])
+        errors = None
+        if not self.payload_schema.is_valid(tc_task["payload"]):
+            errors = "invalid schema"
+            for e in self.payload_schema.iter_errors(tc_task["payload"]):
+                log.debug(e.message)
+        elif not self._isAuthorized(buildername, scopes):
+            errors = "not authorized"
+        elif not self._isValidBuildername(buildername):
+            errors = "invalid buildername"
 
-                # In order to report a malformed-payload on the Task, we need to
-                # claim it first.
-                try:
-                    self.tc_queue.claimTask(taskid, int(runid), {
-                        "workerGroup": self.worker_group,
-                        "workerId": self.worker_id,
-                    })
-                    self.tc_queue.reportException(taskid, runid, {"reason": "malformed-payload"})
-                except TaskclusterRestFailure as e:
-                    log.error("task %s: run %s: status_code: %s body: %s", taskid, runid, e.status_code, e.body)
-                msg.ack()
-                # If this Task is already in our database, we should delete it
-                # because the Task has been cancelled.
+        if errors:
+            log.info("task %s: run %s: buildername: %s: Payload is invalid (%s), refusing to create BuildRequest", taskid, runid, buildername, errors)
+            # In order to report a malformed-payload on the Task, we need to
+            # claim it first.
+            try:
+                self.tc_queue.claimTask(taskid, int(runid), {
+                    "workerGroup": self.worker_group,
+                    "workerId": self.worker_id,
+                })
+                self.tc_queue.reportException(taskid, runid, {"reason": "malformed-payload"})
+            except TaskclusterRestFailure as e:
+                log.error("task %s: run %s: status_code: %s body: %s", taskid, runid, e.status_code, e.body)
+            msg.ack()
+            # If this Task is already in our database, we should delete it
+            # because the Task has been cancelled.
+            with lock_table(self.bbb_db.db, self.bbb_db.tasks_table.name):
+                our_task = self.bbb_db.getTask(taskid)
                 if our_task:
                     # TODO: Should we kill the running Build?
                     self.bbb_db.deleteBuildRequest(our_task.buildrequestId)
-                return
+            return
+
+        # Lock the tasks table to prevent double scheduling
+        with lock_table(self.bbb_db.db, self.bbb_db.tasks_table.name):
+            our_task = self.bbb_db.getTask(taskid)
 
             # When Buildbot Builds end up in a RETRY state they are automatically
             # retried against the same BuildRequest. The BuildbotListener reflects
