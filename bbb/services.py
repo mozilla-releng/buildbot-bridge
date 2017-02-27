@@ -68,15 +68,24 @@ class BuildbotListener(ListenerService):
         also update the BBB database with the claim time which triggers the
         Reflector to start reclaiming it periodically."""
         log.debug("Handling started event: %s", data)
-        # TODO: Error handling?
         buildnumber = data["payload"]["build"]["number"]
         buildername = data["payload"]["build"]["builderName"]
         master = data["_meta"]["master_name"]
         incarnation = data["_meta"]["master_incarnation"]
 
+        try:
+            properties = dict((key, (value, source)) for (key, value, source) in data["payload"]["build"]["properties"])
+            pulse_taskId = properties['taskId'][0]
+        except KeyError:
+            log.warning("handleStarted: couldn't parse properties")
+            pulse_taskId = None
+
         log.info('handleStarted: fetching buildRequests')
         buildrequests = self.buildbot_db.getBuildRequests(buildnumber, buildername, master, incarnation)
         log.info('handleStarted: got %i buildrequests', len(buildrequests))
+
+        if not buildrequests and pulse_taskId:
+            log.warn('handleStarted: no entry found in bbb_db for task %s', pulse_taskId)
 
         for brid in buildrequests:
             brid = brid[0]
@@ -85,6 +94,10 @@ class BuildbotListener(ListenerService):
             except TaskNotFound:
                 log.debug("buildrequest %s: task not found for builder %s, nothing to do.", brid, buildername)
                 continue
+
+            if task.taskId != pulse_taskId:
+                log.warning("handleStarted: taskId from bbb_db (%s) doesn't match taskId from pulse message properties (%s)", task.taskId, pulse_taskId)
+
             log.info("task %s: claiming", task.taskId)
             try:
                 # Taskcluster requires runId to be an int, but it comes to us as a long.
@@ -149,7 +162,10 @@ class BuildbotListener(ListenerService):
         # For each request, get the taskId and runId
         for brid in request_ids[0]:
             try:
+                start = time.time()
                 self._handleFinishedRequest(brid, properties, results)
+                end = time.time()
+                log.info("buildrequest: %s: handled finished in %.2fs", brid, end-start)
             except TaskclusterRestFailure as e:
                 # the exception object has some non-standard attributes which
                 # won't show up in the default stacktrace
