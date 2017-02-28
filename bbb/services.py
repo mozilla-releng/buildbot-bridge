@@ -77,7 +77,9 @@ class BuildbotListener(ListenerService):
             properties = dict((key, (value, source)) for (key, value, source) in data["payload"]["build"]["properties"])
             pulse_taskId = properties['taskId'][0]
         except KeyError:
-            pulse_taskId = None
+            log.debug('handleStarted: no taskId property found for %s %s build %s', master, buildername, buildnumber)
+            msg.ack()
+            return
 
         log.info('handleStarted: fetching buildRequests')
         buildrequests = self.buildbot_db.getBuildRequests(buildnumber, buildername, master, incarnation)

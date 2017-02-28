@@ -61,6 +61,9 @@ INSERT INTO builds
                 "build": {
                     "number": 2,
                     "builderName": "good",
+                    "properties": [
+                        ('taskId', 'abc123', 'test'),
+                    ],
                 }
             },
             "_meta": {
@@ -114,6 +117,9 @@ INSERT INTO builds
                 "build": {
                     "number": 3,
                     "builderName": "good",
+                    "properties": [
+                        ('taskId', 'abc123', 'test'),
+                    ],
                 },
             },
             "_meta": {
@@ -152,6 +158,40 @@ INSERT INTO builds
                 "master_incarnation": "b",
             },
         }
+        self.bblistener.handleStarted(data, Mock())
+
+        self.assertEqual(self.bblistener.tc_queue.claimTask.call_count, 0)
+
+    def testHandleStartedMissingTaskId(self):
+        self.buildbot_db.execute(sa.text("""
+INSERT INTO buildrequests
+    (id, buildsetid, buildername, submitted_at, claimed_by_name, claimed_by_incarnation)
+    VALUES (4, 0, "good", 50, "a", "b");"""))
+        self.buildbot_db.execute(sa.text("""
+INSERT INTO builds
+    (id, number, brid, start_time)
+    VALUES (0, 2, 4, 60);"""))
+        self.tasks.insert().execute(
+            buildrequestId=4,
+            taskId=makeTaskId(),
+            runId=0,
+            createdDate=50,
+            processedDate=60,
+            takenUntil=None
+        )
+        data = {
+            "payload": {
+                "build": {
+                    "number": 2,
+                    "builderName": "good",
+                }
+            },
+            "_meta": {
+                "master_name": "a",
+                "master_incarnation": "b",
+            },
+        }
+        self.bblistener.tc_queue.claimTask.return_value = {"takenUntil": 100}
         self.bblistener.handleStarted(data, Mock())
 
         self.assertEqual(self.bblistener.tc_queue.claimTask.call_count, 0)
