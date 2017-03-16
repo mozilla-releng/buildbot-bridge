@@ -16,9 +16,12 @@ from .servicebase import ListenerService, ServiceBase, ListenerServiceEvent, \
 from .tcutils import createJsonArtifact, createReferenceArtifact
 from .timeutils import parseDateString
 
+from statsd import StatsClient
+
 import logging
 log = logging.getLogger(__name__)
 
+statsd = StatsClient(prefix='bbb.services')
 
 # Buildbot status'- these must match http://mxr.mozilla.org/build/source/buildbot/master/buildbot/status/builder.py#25
 SUCCESS, WARNINGS, FAILURE, SKIPPED, EXCEPTION, RETRY, CANCELLED = range(7)
@@ -62,6 +65,7 @@ class BuildbotListener(ListenerService):
 
         super(BuildbotListener, self).__init__(*args, events=events, **kwargs)
 
+    @statsd.timer('bblistener.handleStarted')
     def handleStarted(self, data, msg):
         """When a Build starts in Buildbot we claim the task in
         Taskcluster, which will move it into the "running" state there. We
@@ -84,12 +88,14 @@ class BuildbotListener(ListenerService):
         log.info('handleStarted: fetching buildRequests')
         buildrequests = self.buildbot_db.getBuildRequests(buildnumber, buildername, master, incarnation)
         log.info('handleStarted: got %i buildrequests', len(buildrequests))
+        statsd.incr('listener.handleStarted.buildrequests', len(buildrequests))
 
         if not buildrequests and pulse_taskId:
             log.warn('handleStarted: no entry found in bbb_db for task %s', pulse_taskId)
 
         for brid in buildrequests:
             brid = brid[0]
+            statsd.incr('listener.handleStarted.buildrequest')
             try:
                 task = self.bbb_db.getTaskFromBuildRequest(brid)
             except TaskNotFound:
@@ -123,6 +129,7 @@ class BuildbotListener(ListenerService):
         if not msg.acknowledged:
             msg.ack()
 
+    @statsd.timer('bblistener.handleFinished')
     def handleFinished(self, data, msg):
         """When a Build finishes in Buildbot we pass along the final state of
         it to the Task(s) associated with it in Taskcluster.
@@ -177,6 +184,7 @@ class BuildbotListener(ListenerService):
                 if not msg.acknowledged:
                     msg.ack()
 
+    @statsd.timer('bblistener._handleFinishedRequest')
     def _handleFinishedRequest(self, brid, properties, results):
         try:
             task = self.bbb_db.getTaskFromBuildRequest(brid)
@@ -313,6 +321,7 @@ class Reflector(ServiceBase):
             self.reflectTasks()
             time.sleep(self.interval)
 
+    @statsd.timer('bblistener._handle_taskcluster_exceptions')
     def _handle_taskcluster_exceptions(self, t, exc):
         status_code = exc.superExc.response.status_code
 
@@ -346,6 +355,7 @@ class Reflector(ServiceBase):
             log.warn("task %s: run %s: Unhandled TC status code %s",
                      t.taskId, t.runId, status_code)
 
+    @statsd.timer('reflector.reflectTasks')
     def reflectTasks(self):
         tasks = list(self.bbb_db.tasks)
         log.info("%s tasks to reflect", len(tasks))
@@ -354,12 +364,13 @@ class Reflector(ServiceBase):
             try:
                 self._reflectTask(t)
             except TaskclusterRestFailure as e:
-                log.exception("task %s: taskcluster exception", t.taskId)
+                log.debug("task %s: taskcluster exception", t.taskId, exc_info=e)
                 self._handle_taskcluster_exceptions(t, e)
             except:
                 log.exception("task %s: run %s: failed to reflect task", t.taskId,
                               t.runId)
 
+    @statsd.timer('reflector._reflectTask')
     def _reflectTask(self, t):
         build_request = self.buildbot_db.getBuildRequest(t.buildrequestId)
         complete = build_request['complete']
@@ -409,13 +420,13 @@ class Reflector(ServiceBase):
                 log.warn("task %s: run %s: buildrequest %s: Too many buildbot builds? we have %i builds.", t.taskId, t.runId, t.buildrequestId, nBuilds)
 
             log.debug("task %s: run %s: buildrequest %s: BuildRequest is in progress", t.taskId, t.runId, t.buildrequestId)
-            # Reclaiming should only happen if we're less than 5 minutes
+            # Reclaiming should only happen if we're less than 10 minutes
             # away from the current claim expiring. Without this, every
             # instance of the Reflector will reclaim each time it runs,
             # which is very spammy in the logs and adds unnecessary load to
             # Taskcluster.
-            if arrow.now() > arrow.get(t.takenUntil).replace(minutes=-5):
-                log.info("task %s: run %s: buildrequest %s: Claim for BuildRequest will expire in less than 5min, reclaiming",
+            if arrow.now() > arrow.get(t.takenUntil).replace(minutes=-10):
+                log.info("task %s: run %s: buildrequest %s: Claim for BuildRequest will expire in less than 10min, reclaiming",
                          t.taskId, t.runId, t.buildrequestId)
                 result = self.tc_queue.reclaimTask(t.taskId, int(t.runId))
                 # Update our own db with the new claim time.
@@ -500,6 +511,7 @@ class TCListener(ListenerService):
         self._refreshAllowedBuilders()
         return buildername in self.allowed_builders
 
+    @statsd.timer('tclistener.handlePending')
     def handlePending(self, data, msg):
         """When a Task becomes pending in Taskcluster it may be because the
         Task was just created, or a new Run for an existing Task was created.
@@ -587,6 +599,7 @@ class TCListener(ListenerService):
 
         msg.ack()
 
+    @statsd.timer('tclistener.handleException')
     def handleException(self, data, msg):
         """Most exceptions from Taskcluster are ignoreable because they are
         caused another part of the Buildbot Bridge. However, when the reason is

@@ -12,14 +12,19 @@ import taskcluster
 
 from .timeutils import parseDateString
 
+from statsd import StatsClient
+
 import logging
 log = logging.getLogger(__name__)
 
+
+statsd = StatsClient(prefix='bbb.servicebase')
 
 ListenerServiceEvent = namedtuple("ListenerServiceEvent", ("exchange", "routing_key", "callback", "queue_name"))
 
 
 @contextmanager
+@statsd.timer('lock_table')
 def lock_table(db, table_name):
 
     try:
@@ -45,11 +50,13 @@ class SelfserveClient(object):
         r = requests.request(method, url, headers={"X-Remote-User": "buildbot-bridge"})
         r.raise_for_status()
 
+    @statsd.timer('selfserve.cancelBuild')
     def cancelBuild(self, branch, id_):
         url = "%s/build/%s" % (branch, id_)
         log.info("Cancelling build: %s", url)
         self._do_request("DELETE", url)
 
+    @statsd.timer('selfserve.cancelBuildRequest')
     def cancelBuildRequest(self, branch, brid):
         # TODO: these (and maybe builds) will get 404s if cancellation happens
         # too soon after scheduling. not sure why, maybe it takes time for buildapi
@@ -102,10 +109,11 @@ class BBBDb(object):
     @property
     def tasks(self):
         log.debug("Fetching all tasks")
-        for t in self.tasks_table.select().execute():
+        for t in self.tasks_table.select().order_by(self.tasks_table.c.takenUntil.desc()).execute():
             log.debug("Yielding %s", t)
             yield t
 
+    @statsd.timer('bbbdb.getTask')
     def getTask(self, taskid):
         log.info("task %s: fetching task from bbbdb", taskid)
         task = self.tasks_table.select(self.tasks_table.c.taskId == taskid).execute().fetchall()
@@ -114,12 +122,14 @@ class BBBDb(object):
         log.debug("task %s: %s", taskid, task)
         return task
 
+    @statsd.timer('bbbdb.getTaskFromBuildRequest')
     def getTaskFromBuildRequest(self, brid):
         task = self.tasks_table.select(self.tasks_table.c.buildrequestId == brid).execute().fetchall()
         if not task:
             raise TaskNotFound("Couldn't find task for brid %i", brid)
         return task[0]
 
+    @statsd.timer('bbbdb.createTask')
     def createTask(self, taskid, runid, brid, created_date):
         log.info("task %s: creating task", taskid)
         log.debug("task %s: runId: %s, brid: %s, created: %s", taskid, runid, brid, created_date)
@@ -131,14 +141,17 @@ class BBBDb(object):
             processedDate=arrow.now().timestamp,
         ).execute()
 
+    @statsd.timer('bbbdb.deleteBuildRequest')
     def deleteBuildRequest(self, brid):
         log.info("buildrequest %s: deleting task from bbbdb", brid)
         self.tasks_table.delete(self.tasks_table.c.buildrequestId == brid).execute()
 
+    @statsd.timer('bbbdb.updateRunId')
     def updateRunId(self, brid, runid):
         log.info("buildrequest %s: updating runId to %s", brid, runid)
         self.tasks_table.update(self.tasks_table.c.buildrequestId == brid).values(runId=runid).execute()
 
+    @statsd.timer('bbbdb.updateTakenUntil')
     def updateTakenUntil(self, brid, taken_until):
         log.debug("buildrequest %s: updating takenUntil to %s", brid, taken_until)
         self.tasks_table.update(self.tasks_table.c.buildrequestId == brid).values(takenUntil=taken_until).execute()
@@ -179,11 +192,13 @@ class BuildbotDb(object):
         self.buildset_properties_table = metadata.tables["buildset_properties"]
         self.buildsets_table = metadata.tables["buildsets"]
 
+    @statsd.timer('bbdb.getBuildRequest')
     def getBuildRequest(self, brid):
         q = sa.select([self.buildrequests_table]).where(
             self.buildrequests_table.c.id == brid)
         return self.db.execute(q).first()
 
+    @statsd.timer('bbdb.getBuildRequests')
     def getBuildRequests(self, buildnumber, buildername, claimed_by_name, claimed_by_incarnation):
         now = time.time()
         # TODO: Using complete=0 sucks a bit. If builds complete before we process
@@ -206,14 +221,17 @@ class BuildbotDb(object):
         log.log(loglevel, "getBuildRequests Query took %.2f seconds", elapsed)
         return ret
 
+    @statsd.timer('bbdb.getBuildsCount')
     def getBuildsCount(self, brid):
         return self.builds_table.count().where(self.builds_table.c.brid == brid).execute().fetchall()[0][0]
 
+    @statsd.timer('bbdb.getBuildIds')
     def getBuildIds(self, brid):
         q = sa.select([self.builds_table.c.id])\
               .where(self.builds_table.c.brid == brid)
         return [row[0] for row in self.db.execute(q).fetchall()]
 
+    @statsd.timer('bbdb.getBranch')
     def getBranch(self, brid):
         q = sa.select([self.sourcestamps_table.c.branch])\
               .where(self.sourcestamps_table.c.id == self.buildsets_table.c.sourcestampid)\
@@ -225,6 +243,7 @@ class BuildbotDb(object):
         else:
             return None
 
+    @statsd.timer('bbdb.createSourceStamp')
     def createSourceStamp(self, sourcestamp={}):
         branch = sourcestamp.get('branch').rstrip("/")
         # Branches from Taskcluster usually come in as a full URL.
@@ -249,6 +268,7 @@ class BuildbotDb(object):
         # TODO: Create change objects, files, etc.
         return ssid
 
+    @statsd.timer('bbdb.createBuildSetProperties')
     def createBuildSetProperties(self, buildsetid, properties):
         q = self.buildset_properties_table.insert().values(
             buildsetid=buildsetid
@@ -259,6 +279,7 @@ class BuildbotDb(object):
             self.db.execute(q, property_name=key, property_value=value)
             log.info("Created buildset_property %s=%s", key, value)
 
+    @statsd.timer('bbdb.injectTask')
     def injectTask(self, taskid, runid, task):
         payload = task["payload"]
         # Create a sourcestamp if necessary

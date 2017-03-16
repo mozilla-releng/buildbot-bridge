@@ -413,8 +413,8 @@ INSERT INTO buildrequests
         )
 
         # Because we're testing that reclaims don't happen too soon, we need
-        # to make sure "now" is within 5 minutes of the takenUntil time.
-        fake_now.return_value = arrow.get(500)
+        # to make sure "now" is within 10 minutes of the takenUntil time.
+        fake_now.return_value = arrow.get(200)
         self.reflector.reflectTasks()
 
         self.assertEqual(self.reflector.tc_queue.reclaimTask.call_count, 0)

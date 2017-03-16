@@ -2,7 +2,7 @@ from setuptools import setup
 
 setup(
     name="bbb",
-    version="1.5.29",
+    version="1.6.0",
     description="Buildbot <-> Taskcluster Bridge",
     author="Mozilla Release Engineering",
     packages=["bbb", "bbb.schemas"],
@@ -26,6 +26,7 @@ setup(
         "jsonschema",
         "PyYAML",
         "slugid",
+        "statsd",
     ],
     tests_require=[
         "mock",
