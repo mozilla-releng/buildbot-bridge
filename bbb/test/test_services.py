@@ -461,6 +461,45 @@ INSERT INTO builds
         self.assertEqual(self.reflector.tc_queue.reclaimTask.call_count, 1)
         self.assertEqual(self.reflector.selfserve.cancelBuild.call_count, 1)
 
+    @patch("arrow.now")
+    def testReclaimCompletedTask(self, fake_now):
+        taskid = makeTaskId()
+        self.buildbot_db.execute(sa.text("""
+INSERT INTO sourcestamps
+    (id, branch) VALUES (0, "foo");
+"""))
+        self.buildbot_db.execute(sa.text("""
+INSERT INTO buildsets
+    (id, sourcestampid, submitted_at) VALUES (0, 0, 2);
+"""))
+        self.buildbot_db.execute(sa.text("""
+INSERT INTO buildrequests
+    (id, buildsetid, buildername, submitted_at, complete)
+    VALUES (2, 0, "foo", 15, 1);
+"""))
+        self.buildbot_db.execute(sa.text("""
+INSERT INTO builds
+    (id, number, brid, start_time)
+    VALUES (2, 0, 2, 30);
+"""))
+        self.tasks.insert().execute(
+            buildrequestId=2,
+            taskId=taskid,
+            runId=0,
+            createdDate=12,
+            processedDate=17,
+            takenUntil=200,
+        )
+
+        fake_now.return_value = arrow.get(150)
+        super_exc = Mock()
+        super_exc.response.status_code = 409
+        self.reflector.tc_queue.reclaimTask.side_effect = TaskclusterRestFailure("fail", super_exc, 409)
+        self.reflector.reflectTasks()
+
+        self.assertEqual(self.reflector.tc_queue.reclaimTask.call_count, 1)
+        self.assertEqual(self.reflector.selfserve.cancelBuild.call_count, 0)
+
     def testPendingTask(self):
         taskid = makeTaskId()
         self.buildbot_db.execute(sa.text("""

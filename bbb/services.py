@@ -408,7 +408,18 @@ class Reflector(ServiceBase):
         elif complete:
             log.info("task %s: run %s: buildrequest %s: BuildRequest is done. BBListener should process it soon, reclaiming in the meantime",
                      t.taskId, t.runId, t.buildrequestId)
-            self.tc_queue.reclaimTask(t.taskId, int(t.runId))
+            try:
+                self.tc_queue.reclaimTask(t.taskId, int(t.runId))
+            except TaskclusterRestFailure as exc:
+                status_code = exc.superExc.response.status_code
+
+                # We can ignore 409 errors here since the BB listener may have
+                # resolved the task for us already
+                if status_code == 409:
+                    log.info("task %s: run %s: buildrequest %s: got 409 when reclaiming task; assuming task is complete",
+                             t.taskId, t.runId, t.buildrequestId)
+                else:
+                    raise
             return
 
         # Build is running, which means it has already been claimed.
@@ -498,6 +509,7 @@ class TCListener(ListenerService):
     def _refreshAllowedBuilders(self):
         now = arrow.now().timestamp
         if self.allowed_builders is None or (now - self.allowed_builders_age) > 300:
+            log.info('refreshing list of allowed builders')
             try:
                 resp = requests.get(ALL_THE_THINGS_URL, timeout=60)
                 resp.raise_for_status()
@@ -506,6 +518,7 @@ class TCListener(ListenerService):
                 self.allowed_builders_age = now
             except Exception:
                 log.exception("Couldn't update list of builders")
+            statsd.timer('tclistener.refreshBuilders', arrow.now().timestamp - now)
 
     def _isValidBuildername(self, buildername):
         self._refreshAllowedBuilders()
