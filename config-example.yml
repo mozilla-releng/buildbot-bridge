@@ -1,0 +1,15 @@
+bb:
+  uri: "mysql+mysqlconnector://buildbot:xxx@dbhost/buildbot_schedulers"
+bbb:
+  uri: "mysql+mysqlconnector://buildbotbridge:xxxx@host/buildbot_bridge"
+  poll_interval: 60  # Refresh
+  reclaim-threshold: 600 # Reclaim the task 600s before takenUntil
+  dry-run: false # Do not touch the DB, do not cancel builds via self serve if true
+  verbose: false
+  dry-run-reclaim: false  # Set to true if you do not want to reclaim tasks
+taskcluster:
+  credentials:
+    clientId: "xxx"
+    accessToken: "xxx"
+selfserve:
+  api_root: "http://buildapi.pvt.build.mozilla.org/buildapi/self-serve"

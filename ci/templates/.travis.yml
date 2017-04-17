@@ -8,7 +8,10 @@ env:
   matrix:
     - TOXENV=check
     - TOXENV=docs
-    - TOXENV=py35,report,coveralls
+{% for env in tox_environments %}{{ '' }}
+    - TOXENV={{ env }},report,coveralls
+{% endfor %}
+
 before_install:
   - python --version
   - uname -a
