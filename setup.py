@@ -77,7 +77,7 @@ setup(
     },
     entry_points={
         'console_scripts': [
-            'bbb = bbb.cli:main',
+            'reflector = bbb.cli:reflector',
         ]
     },
 )

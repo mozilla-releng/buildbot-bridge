@@ -1,14 +1,14 @@
 
 from click.testing import CliRunner
 
-from bbb.cli import main
+from bbb.cli import reflector
 
 
-def test_main():
+def test_reflector():
     runner = CliRunner()
-    result = runner.invoke(main, [])
+    result = runner.invoke(reflector, [])
 
-    assert result.output == """Usage: main [OPTIONS]
+    assert result.output == """Usage: reflector [OPTIONS]
 
 Error: Missing option "--config".
 """

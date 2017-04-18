@@ -32,7 +32,7 @@ log = logging.getLogger(__name__)
 @click.command()
 @click.option('--config', type=click.File('rb'), required=True,
               help='YAML Config file')
-def main(config):
+def reflector(config):
     cfg = yaml.safe_load(config)
 
     log_level = logging.INFO
