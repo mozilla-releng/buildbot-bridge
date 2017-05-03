@@ -574,11 +574,7 @@ class TCListener(ListenerService):
             msg.ack()
             # If this Task is already in our database, we should delete it
             # because the Task has been cancelled.
-            with lock_table(self.bbb_db.db, self.bbb_db.tasks_table.name):
-                our_task = self.bbb_db.getTask(taskid)
-                if our_task:
-                    # TODO: Should we kill the running Build?
-                    self.bbb_db.deleteBuildRequest(our_task.buildrequestId)
+            self.bbb_db.deleteTask(taskid)
             return
 
         # Lock the tasks table to prevent double scheduling

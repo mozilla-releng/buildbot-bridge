@@ -156,6 +156,11 @@ class BBBDb(object):
         log.debug("buildrequest %s: updating takenUntil to %s", brid, taken_until)
         self.tasks_table.update(self.tasks_table.c.buildrequestId == brid).values(takenUntil=taken_until).execute()
 
+    @statsd.timer('bbbdb.deleteTask')
+    def deleteTask(self, taskId):
+        log.info("task %s: deleting task from bbbdb", taskId)
+        self.tasks_table.delete(self.tasks_table.c.taskId == taskId).execute()
+
 
 class BuildbotDb(object):
     """Wrapper object for access to preexisting Buildbot scheduler database."""
