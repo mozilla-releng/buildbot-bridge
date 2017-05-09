@@ -9,10 +9,11 @@ from taskcluster.exceptions import TaskclusterRestFailure
 import requests
 from requests.exceptions import RequestException, HTTPError
 import yaml
+from sqlalchemy.exc import IntegrityError
 
 from . import schemas
 from .servicebase import ListenerService, ServiceBase, ListenerServiceEvent, \
-    SelfserveClient, TaskNotFound, lock_table
+    SelfserveClient, TaskNotFound
 from .tcutils import createJsonArtifact, createReferenceArtifact
 from .timeutils import parseDateString
 
@@ -577,34 +578,38 @@ class TCListener(ListenerService):
             self.bbb_db.deleteTask(taskid)
             return
 
-        # Lock the tasks table to prevent double scheduling
-        with lock_table(self.bbb_db.db, self.bbb_db.tasks_table.name):
-            our_task = self.bbb_db.getTask(taskid)
+        our_task = self.bbb_db.getTask(taskid)
 
-            # When Buildbot Builds end up in a RETRY state they are automatically
-            # retried against the same BuildRequest. The BuildbotListener reflects
-            # this into Taskcluster be calling rerunTask, which creates a new Run
-            # for the same Task. In these cases, we don't want to do anything
-            # except update our own runId. If we created a new BuildRequest for it
-            # we'd end up with an extra Build.
-            if our_task:
-                # Taskcluster guarantees *at least* one message per event. Check
-                # runId to ignore duplicates
-                if our_task.runId >= runid:
-                    log.info("task %s run %s brid %s: ignoring duplicated message",
-                             taskid, runid, our_task.buildrequestId)
-                else:
-                    log.info("task %s: run %s: buildrequest %s: updating run id", taskid, runid, our_task.buildrequestId)
-                    self.bbb_db.updateRunId(our_task.buildrequestId, runid)
-            # If the task doesn't exist we need to insert it into our database.
-            # We don't want to claim it yet though, because that will mark the task
-            # as running. The BuildbotListener will take care of that when a slave
-            # actually picks up the job.
+        # When Buildbot Builds end up in a RETRY state they are automatically
+        # retried against the same BuildRequest. The BuildbotListener reflects
+        # this into Taskcluster be calling rerunTask, which creates a new Run
+        # for the same Task. In these cases, we don't want to do anything
+        # except update our own runId. If we created a new BuildRequest for it
+        # we'd end up with an extra Build.
+        if our_task:
+            # Taskcluster guarantees *at least* one message per event. Check
+            # runId to ignore duplicates
+            if our_task.runId >= runid:
+                log.info("task %s run %s brid %s: ignoring duplicated message",
+                         taskid, runid, our_task.buildrequestId)
             else:
-                log.info("task %s: run %s: injecting task into bb", taskid, runid)
+                log.info("task %s: run %s: buildrequest %s: updating run id", taskid, runid, our_task.buildrequestId)
+                self.bbb_db.updateRunId(our_task.buildrequestId, runid)
+        # If the task doesn't exist we need to insert it into our database.
+        # We don't want to claim it yet though, because that will mark the task
+        # as running. The BuildbotListener will take care of that when a slave
+        # actually picks up the job.
+        else:
+            log.info("task %s: run %s: injecting task into bb", taskid, runid)
+            try:
+                self.bbb_db.createTask(taskid, runid, parseDateString(tc_task["created"]))
                 brid = self.buildbot_db.injectTask(taskid, runid, tc_task)
-                self.bbb_db.createTask(taskid, runid, brid, parseDateString(tc_task["created"]))
-                log.info("task %s: run %s: buildrequest %s: injected into bb", taskid, runid, brid)
+                self.bbb_db.updateBuildRequestId(taskid, runid, brid)
+                log.info("task %s: run %s: buildrequest %s: injected into bb",
+                         taskid, runid, brid)
+            except IntegrityError:
+                log.info("task %s run %s: ignoring duplicated insert",
+                         taskid, runid)
 
         msg.ack()
 

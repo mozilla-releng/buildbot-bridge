@@ -2,7 +2,7 @@ from setuptools import setup
 
 setup(
     name="bbb",
-    version="1.6.2",
+    version="1.6.3",
     description="Buildbot <-> Taskcluster Bridge",
     author="Mozilla Release Engineering",
     packages=["bbb", "bbb.schemas"],

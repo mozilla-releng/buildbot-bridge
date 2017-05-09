@@ -5,9 +5,10 @@ import arrow
 import sqlalchemy as sa
 from taskcluster.exceptions import TaskclusterRestFailure
 
-from .dbutils import makeSchedulerDb
+from .dbutils import makeSchedulerDb, makeBBBDb
 from ..services import BuildbotListener, Reflector, TCListener, SUCCESS, \
     WARNINGS, FAILURE, EXCEPTION, RETRY, CANCELLED
+from ..servicebase import BBBDb
 from ..tcutils import makeTaskId
 
 
@@ -16,6 +17,7 @@ class TestBuildbotListener(unittest.TestCase):
         self.bblistener = BuildbotListener(
             bbb_db="sqlite:///:memory:",
             buildbot_db="sqlite:///:memory:",
+            bbb_db_init_func=makeBBBDb,
             buildbot_db_init_func=makeSchedulerDb,
             tc_config={
                 "credentials": {
@@ -351,6 +353,7 @@ class TestReflector(unittest.TestCase):
         self.reflector = Reflector(
             bbb_db="sqlite:///:memory:",
             buildbot_db="sqlite:///:memory:",
+            bbb_db_init_func=makeBBBDb,
             buildbot_db_init_func=makeSchedulerDb,
             tc_config={
                 "credentials": {
@@ -581,6 +584,7 @@ class TestTCListener(unittest.TestCase):
         self.tclistener = TCListener(
             bbb_db="sqlite:///:memory:",
             buildbot_db="sqlite:///:memory:",
+            bbb_db_init_func=makeBBBDb,
             buildbot_db_init_func=makeSchedulerDb,
             tc_config={
                 "credentials": {
@@ -812,7 +816,7 @@ class TestTCListener(unittest.TestCase):
     def testHandlePendingUpdateRunId(self):
         taskid = makeTaskId()
         self.tasks.insert().execute(
-            buildRequestId=1,
+            buildrequestId=1,
             taskId=taskid,
             runId=0,
             createdDate=23,
@@ -1169,3 +1173,75 @@ INSERT INTO buildrequests
         self.assertEqual(self.tclistener.tc_queue.claimTask.call_count, 1)
         self.assertEqual(self.tclistener.tc_queue.reportException.call_count, 1)
         self.assertIn({"reason": "malformed-payload"}, self.tclistener.tc_queue.reportException.call_args[0])
+
+
+@patch("arrow.now")
+def test_integrity_error(fake_now, caplog):
+    # Use pytest to get access to captured logs
+    fake_now.return_value = arrow.Arrow(1997, 6, 22)
+    taskid = makeTaskId()
+    data = {"status": {
+        "taskId": taskid,
+        "runs": [
+            {"runId": 1},
+        ],
+    }}
+    tclistener = TCListener(
+        bbb_db="sqlite:///:memory:",
+        buildbot_db="sqlite:///:memory:",
+        bbb_db_init_func=makeBBBDb,
+        buildbot_db_init_func=makeSchedulerDb,
+        tc_config={
+            "credentials": {
+                "clientId": "fake",
+                "accessToken": "fake",
+            }
+        },
+        selfserve_url="fake",
+        pulse_host="fake",
+        pulse_user="fake",
+        pulse_password="fake",
+        pulse_queue_basename="fake",
+        pulse_exchange_basename="fake",
+        worker_type="fake",
+        provisioner_id="fake",
+        worker_group="fake",
+        worker_id="fake",
+        restricted_builders=(
+            ".*restricted.*",
+        ),
+        ignored_builders=(
+            ".*ignored.*",
+        ),
+    )
+    tclistener.tc_queue = Mock()
+    tclistener.selfserve = Mock()
+
+    mock_get = patch('requests.get')
+    fake_get = mock_get.start()
+    fake_get.return_value.json.return_value = {"builders": {
+        "builder good name": {},
+        "another good name": {},
+        "restricted builder name": {},
+        "i'm a good builder": {},
+    }}
+    tclistener.tc_queue.task.return_value = {
+        "created": 20,
+        "payload": {
+            "buildername": "builder good name",
+            "properties": {
+                "product": "foo",
+            },
+            "sourcestamp": {
+                "branch": "https://hg.mozilla.org/integration/mozilla-inbound/",
+                "revision": "abcdef123456",
+            },
+        },
+    }
+
+    tclistener.handlePending(data, Mock())
+    # handle the same data twice and make sure only one is used
+    # patch getTask() to simulate a race condition and call createTask() twice
+    with patch.object(BBBDb, 'getTask', return_value=None):
+        tclistener.handlePending(data, Mock())
+    assert 'ignoring duplicated insert' in caplog.text

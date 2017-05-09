@@ -55,3 +55,17 @@ CREATE TABLE buildsets (
                 `results` SMALLINT
             );
 """))
+
+
+def makeBBBDb(db):
+    db.execute(sa.text("""
+CREATE TABLE tasks (
+                `buildrequestId` INTEGER,
+                `taskId` VARCHAR(32) NOT NULL,
+                `runId` INTEGER NOT NULL,
+                `createdDate` INTEGER,
+                `processedDate` INTEGER,
+                `takenUntil` INTEGER,
+                CONSTRAINT bbb_taskId_runId UNIQUE (taskId, runId)
+            );
+"""))

@@ -2,7 +2,6 @@ from collections import namedtuple
 import json
 import time
 from urlparse import urlparse
-from contextlib import contextmanager
 
 import arrow
 from kombu import Connection, Queue, Exchange
@@ -21,19 +20,6 @@ log = logging.getLogger(__name__)
 statsd = StatsClient(prefix='bbb.servicebase')
 
 ListenerServiceEvent = namedtuple("ListenerServiceEvent", ("exchange", "routing_key", "callback", "queue_name"))
-
-
-@contextmanager
-@statsd.timer('lock_table')
-def lock_table(db, table_name):
-
-    try:
-        if "mysql" in db.url.get_backend_name():
-            db.execute(sa.text("LOCK TABLE {} WRITE;".format(table_name)))
-        yield
-    finally:
-        if "mysql" in db.url.get_backend_name():
-            db.execute(sa.text("UNLOCK TABLES;"))
 
 
 class SelfserveClient(object):
@@ -72,7 +58,7 @@ class TaskNotFound(Exception):
 
 class BBBDb(object):
     """Wrapper object for creation of and access to Buildbot Bridge database."""
-    def __init__(self, uri):
+    def __init__(self, uri, init_func=None):
         # pool_size is set to 1 because each Bridge service is single threaded, so
         # there's no reason to use more than one connection per app.
         # pool_recycle is set to 60 to avoid MySQL timing out connections after
@@ -94,17 +80,11 @@ class BBBDb(object):
         else:
             self.db = sa.create_engine(uri, pool_size=1, pool_recycle=60)
 
+        if init_func:
+            init_func(self.db)
         metadata = sa.MetaData(self.db)
-        self.tasks_table = sa.Table(
-            'tasks', metadata,
-            sa.Column('buildrequestId', sa.Integer, primary_key=True),
-            sa.Column('taskId', sa.String(32), index=True),
-            sa.Column('runId', sa.Integer),
-            sa.Column('createdDate', sa.Integer),  # When the task was submitted to TC
-            sa.Column('processedDate', sa.Integer),  # When we put it into BB
-            sa.Column('takenUntil', sa.Integer, index=True),  # How long until our claim needs to be renewed
-        )
-        metadata.create_all(self.db)
+        metadata.reflect()
+        self.tasks_table = metadata.tables["tasks"]
 
     @property
     def tasks(self):
@@ -130,16 +110,25 @@ class BBBDb(object):
         return task[0]
 
     @statsd.timer('bbbdb.createTask')
-    def createTask(self, taskid, runid, brid, created_date):
+    def createTask(self, taskid, runid, created_date):
         log.info("task %s: creating task", taskid)
-        log.debug("task %s: runId: %s, brid: %s, created: %s", taskid, runid, brid, created_date)
+        log.debug("task %s: runId: %s, created: %s", taskid, runid,
+                  created_date)
         self.tasks_table.insert().values(
             taskId=taskid,
             runId=runid,
-            buildrequestId=brid,
             createdDate=created_date,
             processedDate=arrow.now().timestamp,
         ).execute()
+
+    @statsd.timer('bbbdb.updateBuildRequestId')
+    def updateBuildRequestId(self, taskid, runid, brid):
+        log.info("task %s run %s: updating buildrequestId: %s",
+                 taskid, runid, brid)
+        self.tasks_table.update().where(
+            self.tasks_table.c.taskId == taskid).where(
+            self.tasks_table.c.runId == runid).values(
+            buildrequestId=brid).execute()
 
     @statsd.timer('bbbdb.deleteBuildRequest')
     def deleteBuildRequest(self, brid):
@@ -334,8 +323,9 @@ class BuildbotDb(object):
 class ServiceBase(object):
     """A base for all BBB services that manages access to the buildbot db,
        bbb db, and taskcluster."""
-    def __init__(self, bbb_db, buildbot_db, tc_config, buildbot_db_init_func=None):
-        self.bbb_db = BBBDb(bbb_db)
+    def __init__(self, bbb_db, buildbot_db, tc_config, bbb_db_init_func=None,
+                 buildbot_db_init_func=None):
+        self.bbb_db = BBBDb(bbb_db, bbb_db_init_func)
         self.buildbot_db = BuildbotDb(buildbot_db, buildbot_db_init_func)
         self.tc_queue = taskcluster.Queue(tc_config)
         self.running = False
