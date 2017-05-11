@@ -66,7 +66,8 @@ INSERT INTO builds
                     "properties": [
                         ('taskId', 'abc123', 'test'),
                     ],
-                }
+                },
+                "request_ids": [4, 5],
             },
             "_meta": {
                 "master_name": "a",
@@ -123,6 +124,7 @@ INSERT INTO builds
                         ('taskId', 'abc123', 'test'),
                     ],
                 },
+                "request_ids": [2, 3],
             },
             "_meta": {
                 "master_name": "a",
@@ -153,7 +155,8 @@ INSERT INTO builds
                 "build": {
                     "number": 2,
                     "builderName": "bad",
-                }
+                },
+                "request_ids": [4, 5],
             },
             "_meta": {
                 "master_name": "a",
@@ -186,7 +189,8 @@ INSERT INTO builds
                 "build": {
                     "number": 2,
                     "builderName": "good",
-                }
+                },
+                "request_ids": [4, 5],
             },
             "_meta": {
                 "master_name": "a",

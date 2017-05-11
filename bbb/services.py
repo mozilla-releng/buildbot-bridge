@@ -75,8 +75,8 @@ class BuildbotListener(ListenerService):
         log.debug("Handling started event: %s", data)
         buildnumber = data["payload"]["build"]["number"]
         buildername = data["payload"]["build"]["builderName"]
+        buildrequests = data["payload"]["request_ids"]
         master = data["_meta"]["master_name"]
-        incarnation = data["_meta"]["master_incarnation"]
 
         try:
             properties = dict((key, (value, source)) for (key, value, source) in data["payload"]["build"]["properties"])
@@ -86,16 +86,12 @@ class BuildbotListener(ListenerService):
             msg.ack()
             return
 
-        log.info('handleStarted: fetching buildRequests')
-        buildrequests = self.buildbot_db.getBuildRequests(buildnumber, buildername, master, incarnation)
-        log.info('handleStarted: got %i buildrequests', len(buildrequests))
         statsd.incr('listener.handleStarted.buildrequests', len(buildrequests))
 
         if not buildrequests and pulse_taskId:
             log.warn('handleStarted: no entry found in bbb_db for task %s', pulse_taskId)
 
         for brid in buildrequests:
-            brid = brid[0]
             statsd.incr('listener.handleStarted.buildrequest')
             try:
                 task = self.bbb_db.getTaskFromBuildRequest(brid)
@@ -171,10 +167,7 @@ class BuildbotListener(ListenerService):
         # For each request, get the taskId and runId
         for brid in request_ids[0]:
             try:
-                start = time.time()
                 self._handleFinishedRequest(brid, properties, results)
-                end = time.time()
-                log.info("buildrequest: %s: handled finished in %.2fs", brid, end-start)
             except TaskclusterRestFailure as e:
                 # the exception object has some non-standard attributes which
                 # won't show up in the default stacktrace

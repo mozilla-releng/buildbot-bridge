@@ -1,6 +1,5 @@
 from collections import namedtuple
 import json
-import time
 from urlparse import urlparse
 
 import arrow
@@ -191,29 +190,6 @@ class BuildbotDb(object):
         q = sa.select([self.buildrequests_table]).where(
             self.buildrequests_table.c.id == brid)
         return self.db.execute(q).first()
-
-    @statsd.timer('bbdb.getBuildRequests')
-    def getBuildRequests(self, buildnumber, buildername, claimed_by_name, claimed_by_incarnation):
-        now = time.time()
-        # TODO: Using complete=0 sucks a bit. If builds complete before we process
-        # the build started event, this query doesn't work.
-        q = sa.select([self.buildrequests_table.c.id])\
-              .where(self.builds_table.c.number == buildnumber)\
-              .where(self.buildrequests_table.c.id == self.builds_table.c.brid)\
-              .where(self.buildrequests_table.c.complete == 0)\
-              .where(self.buildrequests_table.c.buildername == buildername)\
-              .where(self.buildrequests_table.c.claimed_by_name == claimed_by_name)\
-              .where(self.buildrequests_table.c.claimed_by_incarnation == claimed_by_incarnation)
-        ret = self.db.execute(q).fetchall()
-
-        elapsed = time.time() - now
-
-        loglevel = logging.INFO
-        if elapsed > 5:
-            loglevel = logging.WARNING
-
-        log.log(loglevel, "getBuildRequests Query took %.2f seconds", elapsed)
-        return ret
 
     @statsd.timer('bbdb.getBuildsCount')
     def getBuildsCount(self, brid):
