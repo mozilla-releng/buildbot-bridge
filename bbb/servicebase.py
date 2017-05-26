@@ -259,6 +259,8 @@ class BuildbotDb(object):
 
         # TODO: submitted_at should be now, or the original task?
         # using orginal task's date for now
+        # Note: The reason field should not be changed. It is used
+        # by other systems to detect bbb jobs.
         submitted_at = parseDateString(task['created'])
         q = self.buildsets_table.insert().values(
             external_idstring="taskId:{}".format(taskid),

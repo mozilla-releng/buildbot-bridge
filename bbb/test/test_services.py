@@ -706,6 +706,14 @@ class TestTCListener(unittest.TestCase):
             (1, u"product", u'["foo", "bbb"]'),
         ])
 
+        # This assertion is important because the reason field
+        # is used by TH for backfilling bbb jobs
+        bb_state = self.buildbot_db.execute(sa.text("""
+SELECT * FROM buildsets;"""))
+        for row in bb_state:
+            reason = row[2][0:-len(taskid)]
+            self.assertEqual(reason, u'Created by BBB for task ')
+
     @patch("arrow.now")
     def testHandlePendingNotAuthorizedRestrictedBuilder(self, fake_now):
         taskid = makeTaskId()
