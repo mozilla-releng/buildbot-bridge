@@ -531,6 +531,7 @@ class TCListener(ListenerService):
 
         taskid = data["status"]["taskId"]
         runid = data["status"]["runs"][-1]["runId"]
+        scheduled = data["status"]["runs"][-1]["scheduled"]
 
         tc_task = self.tc_queue.task(taskid)
         buildername = tc_task["payload"].get("buildername")
@@ -596,7 +597,7 @@ class TCListener(ListenerService):
             log.info("task %s: run %s: injecting task into bb", taskid, runid)
             try:
                 self.bbb_db.createTask(taskid, runid, parseDateString(tc_task["created"]))
-                brid = self.buildbot_db.injectTask(taskid, runid, tc_task)
+                brid = self.buildbot_db.injectTask(taskid, scheduled, tc_task)
                 self.bbb_db.updateBuildRequestId(taskid, runid, brid)
                 log.info("task %s: run %s: buildrequest %s: injected into bb",
                          taskid, runid, brid)

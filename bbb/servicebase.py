@@ -250,18 +250,16 @@ class BuildbotDb(object):
             log.info("Created buildset_property %s=%s", key, value)
 
     @statsd.timer('bbdb.injectTask')
-    def injectTask(self, taskid, runid, task):
+    def injectTask(self, taskid, scheduled, task):
         payload = task["payload"]
         # Create a sourcestamp if necessary
         sourcestamp = payload.get('sourcestamp', {})
 
         sourcestampid = self.createSourceStamp(sourcestamp)
 
-        # TODO: submitted_at should be now, or the original task?
-        # using orginal task's date for now
         # Note: The reason field should not be changed. It is used
         # by other systems to detect bbb jobs.
-        submitted_at = parseDateString(task['created'])
+        submitted_at = parseDateString(scheduled)
         q = self.buildsets_table.insert().values(
             external_idstring="taskId:{}".format(taskid),
             reason="Created by BBB for task {0}".format(taskid),
