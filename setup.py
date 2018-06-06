@@ -2,7 +2,7 @@ from setuptools import setup
 
 setup(
     name="bbb",
-    version="1.6.5",
+    version="1.6.6",
     description="Buildbot <-> Taskcluster Bridge",
     author="Mozilla Release Engineering",
     packages=["bbb", "bbb.schemas"],
@@ -27,6 +27,7 @@ setup(
         "PyYAML",
         "slugid",
         "statsd",
+        "backports.functools_lru_cache",
     ],
     tests_require=[
         "mock",

@@ -28,7 +28,7 @@ def createJsonArtifact(queue, taskid, runid, name, data, expires):
         try:
             resp = requests.put(put_url, data=data, headers={
                 "Content-Type": "application/json",
-                "Content-Length": len(data),
+                "Content-Length": str(len(data)),
             })
             log.debug("task %s: run %s: Got %s %s", taskid, runid, resp, resp.headers)
             return

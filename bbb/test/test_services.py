@@ -1,3 +1,4 @@
+import logging
 from mock import Mock, patch
 import unittest
 
@@ -1195,6 +1196,7 @@ INSERT INTO buildrequests
 @patch("arrow.now")
 def test_integrity_error(fake_now, caplog):
     # Use pytest to get access to captured logs
+    caplog.set_level(logging.INFO)
     fake_now.return_value = arrow.Arrow(1997, 6, 22)
     taskid = makeTaskId()
     data = {"status": {

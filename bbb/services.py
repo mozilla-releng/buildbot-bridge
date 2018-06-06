@@ -360,7 +360,7 @@ class Reflector(ServiceBase):
             except TaskclusterRestFailure as e:
                 log.debug("task %s: taskcluster exception", t.taskId, exc_info=e)
                 self._handle_taskcluster_exceptions(t, e)
-            except:
+            except Exception:
                 log.exception("task %s: run %s: failed to reflect task", t.taskId,
                               t.runId)
 
